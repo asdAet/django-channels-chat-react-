@@ -1,7 +1,9 @@
+
 .app-shell {
-  max-width: 70%;
-  margin: 0% auto;
-  padding: 32px 24px 72px;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 32px 72px;
   color: #e2e8f5;
 }
 
@@ -13,6 +15,9 @@
 }
 
 .topbar {
+  width: calc(100% + 64px);
+  margin-left: -32px;
+  margin-right: -32px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -44,7 +49,6 @@
   transform: translateY(-1px);
 }
 
-
 .brand_link {
   border: none;
   background: linear-gradient(120deg, #8ae6ff, #7c5bff);
@@ -65,7 +69,6 @@
   transform: translateY(-1px);
 }
 
-
 .brand {
   border: none;
   background: linear-gradient(120deg, #8ae6ff, #7c5bff);
@@ -76,7 +79,6 @@
   font-size: 18px;
   letter-spacing: 0.3px;
   cursor: pointer;
-
 }
 
 .avatar_link {
@@ -117,6 +119,22 @@
   background: linear-gradient(120deg, #8ae6ff, #7c5bff);
   color: #0a1020;
   border: none;
+}
+
+.btn.logaut {
+  background: linear-gradient(120deg, #ff8a8a, #c11c1c);
+  color: #0a1020;
+  border: none;
+}
+
+.btn.logaut:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 36px rgba(193, 28, 28, 0.45);
+}
+
+.btn.logaut:active {
+  transform: translateY(0);
+  box-shadow: 0 6px 18px rgba(193, 28, 28, 0.35);
 }
 
 .btn.ghost {
@@ -275,6 +293,7 @@ button:focus {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 .hero-card {
@@ -294,8 +313,8 @@ button:focus {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  overflow: hidden;
-  max-height: 220px;
+  max-height: 320px;
+  padding-right: 4px;
 }
 
 .live-item {
@@ -394,8 +413,67 @@ button:focus {
 }
 
 .card.wide {
-  max-width: 900px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+/* Mobile tweaks */
+@media (max-width: 640px) {
+  .app-shell {
+    padding: 20px 14px 48px;
+    max-width: 100%;
+  }
+
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    width: calc(100% + 28px);
+    margin-left: -14px;
+    margin-right: -14px;
+  }
+
+  .topbar nav,
+  .nav-actions {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .hero {
+    grid-template-columns: 1fr;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  .card.wide {
+    width: 100%;
+    margin: 0;
+  }
+
+  .profile_avatar_wrapper {
+    width: 140px;
+    height: 140px;
+  }
+
+  .grid.two {
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn,
+  .link {
+    width: 100%;
+    text-align: center;
+  }
 }
 
 .card-header {
@@ -431,8 +509,8 @@ button:focus {
 }
 
 .form.two-col {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
@@ -589,7 +667,7 @@ button:focus {
   .topbar {
     flex-direction: column;
     gap: 12px;
-    align-items: flex-start;
+    /* align-items: flex-start; */
   }
 
   .chat-log {

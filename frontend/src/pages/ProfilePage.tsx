@@ -122,7 +122,7 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout}: Props) {
             На главную
           </button>
 
-          <button className="btn ghost" type="button" onClick={onLogout}>
+          <button className="btn logaut" type="button" onClick={onLogout}>
             Выйти
           </button>
         </div>
