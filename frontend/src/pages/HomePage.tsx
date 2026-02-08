@@ -1,6 +1,5 @@
-import type { FormEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getPublicRoom, getRoomMessages } from '../shared/api/chat';
+import { getPublicRoom, getRoomDetails, getRoomMessages } from '../shared/api/chat';
 import type { RoomDetails } from '../entities/room/types';
 import type { UserProfile } from '../entities/user/types';
 import { debugLog } from '../shared/lib/debug';
@@ -13,11 +12,12 @@ type Props = {
 };
 
 export function HomePage({ user, onNavigate }: Props) {
-  const [roomName, setRoomName] = useState('');
   const [publicRoom, setPublicRoom] = useState<RoomDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [liveMessages, setLiveMessages] = useState<Message[]>([]);
   const [online, setOnline] = useState<OnlineUser[]>([]);
+  const [creatingRoom, setCreatingRoom] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const presenceRef = useRef<WebSocket | null>(null);
 
@@ -158,10 +158,47 @@ export function HomePage({ user, onNavigate }: Props) {
     };
   }, [user]);
 
-  const onJoinRoom = (event: FormEvent) => {
-    event.preventDefault();
-    if (!roomName.trim()) return;
-    onNavigate(`/rooms/${encodeURIComponent(roomName.trim())}`);
+  const createRoomSlug = (length = 8) => {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const values = new Uint8Array(length);
+    if (globalThis.crypto?.getRandomValues) {
+      globalThis.crypto.getRandomValues(values);
+      return Array.from(values, (value) => alphabet[value % alphabet.length]).join('');
+    }
+    let fallback = '';
+    for (let i = 0; i < length; i += 1) {
+      fallback += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    return fallback;
+  };
+
+  const onCreateRoom = async () => {
+    if (!user || creatingRoom) return;
+    setCreateError(null);
+    setCreatingRoom(true);
+    let navigated = false;
+
+    try {
+      const maxAttempts = 5;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const slug = createRoomSlug();
+        const details = await getRoomDetails(slug);
+        if (details.created === false) {
+          continue;
+        }
+        navigated = true;
+        onNavigate(`/rooms/${encodeURIComponent(slug)}`);
+        return;
+      }
+      setCreateError('Не удалось создать уникальную комнату. Попробуйте еще раз.');
+    } catch (err) {
+      debugLog('Room create failed', err);
+      setCreateError('Не удалось создать комнату. Попробуйте еще раз.');
+    } finally {
+      if (!navigated) {
+        setCreatingRoom(false);
+      }
+    }
   };
 
   return (
@@ -243,33 +280,25 @@ export function HomePage({ user, onNavigate }: Props) {
           <div className="card-header">
             <div>
               <p className="eyebrow">Своя комната</p>
-              <h3>Создайте или подключитесь</h3>
+              <h3>Создайте новую комнату</h3>
             </div>
           </div>
           <p className="muted">
-            Введите название комнаты — если её нет, мы откроем новую. Имя
-            комнаты становится частью URL, можно делиться ссылкой.
+            Нажмите кнопку, чтобы создать новую приватную комнату с уникальным именем. Мы
+            проверим, что такой комнаты еще нет, и только после этого подключим вас.
           </p>
-          <form className="form" onSubmit={onJoinRoom}>
-            <label className="field">
-              <span>Название</span>
-              <input
-                type="text"
-                value={roomName}
-                onChange={(e) => setRoomName(e.target.value)}
-                placeholder="pirate-crew или любое другое"
-                disabled={!user}
-              />
-            </label>
+          <div className="form">
             <button
               className="btn outline"
-              type="submit"
-              disabled={!user || !roomName.trim()}
+              type="button"
+              disabled={!user || creatingRoom}
+              onClick={onCreateRoom}
             >
-              Подключиться
+              {creatingRoom ? 'Создаем комнату...' : 'Создать комнату'}
             </button>
+            {createError && <p className="note">{createError}</p>}
             {!user && <p className="note">Сначала войдите в аккаунт.</p>}
-          </form>
+          </div>
         </div>
 
         <div className="card">

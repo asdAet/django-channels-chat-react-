@@ -127,7 +127,8 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
       <div className="chat-header">
         <div>
           <p className="eyebrow">Комната</p>
-          <h2>{details?.name || slug}</h2>
+          <h2>{details?.createdBy || details?.name || slug}</h2>
+          {details?.createdBy && <p className="muted">Создатель: {details.createdBy}</p>}
         </div>
         <span className={`pill ${status === 'online' ? 'success' : 'muted'}`}>
           {status === 'online' ? 'WebSocket online' : 'Соединение...'}

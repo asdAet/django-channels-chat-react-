@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 
 # Create your models here.
 
@@ -21,6 +22,13 @@ class Room(models.Model):
     name = models.CharField(max_length=50)
     # for url
     slug = models.CharField(max_length=50, unique=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_rooms",
+    )
 
     def __str__(self):
         return str(self.name)

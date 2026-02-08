@@ -87,15 +87,36 @@ def room_details(request, room_slug):
         return JsonResponse({"error": "Требуется авторизация"}, status=401)
 
     try:
-        room, _created = Room.objects.get_or_create(
+        defaults = {"name": room_slug}
+        if room_slug == PUBLIC_ROOM_SLUG:
+            defaults["name"] = PUBLIC_ROOM_NAME
+        elif request.user.is_authenticated:
+            defaults["created_by"] = request.user
+
+        room, created = Room.objects.get_or_create(
             slug=room_slug,
-            defaults={"name": room_slug},
+            defaults=defaults,
         )
-        return JsonResponse({"slug": room.slug, "name": room.name})
+        created_by = room.created_by.username if room.created_by else None
+        return JsonResponse(
+            {
+                "slug": room.slug,
+                "name": room.name,
+                "created": created,
+                "createdBy": created_by,
+            }
+        )
     except (OperationalError, ProgrammingError, IntegrityError):
         # Если таблицы нет или миграции не применены, вернем минимальные данные,
         # чтобы фронт продолжил работать.
-        return JsonResponse({"slug": room_slug, "name": room_slug})
+        return JsonResponse(
+            {
+                "slug": room_slug,
+                "name": room_slug,
+                "created": True,
+                "createdBy": None,
+            }
+        )
 
 
 @require_http_methods(["GET"])
