@@ -357,6 +357,11 @@ button:focus {
   color: #e2e8f5;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  word-break: break-word;
 }
 
 .grid-head {
