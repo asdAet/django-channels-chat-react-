@@ -293,32 +293,33 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
               </div>
             </div>
           )}
-                    {user && (
-                      <div className={`chat-input${rateLimitActive ? ' blocked' : ''}`}>
-                        <input
-                          type="text"
-                          value={draft}
-                          aria-label="?????????"
-                          placeholder="?????????"
-                          disabled={rateLimitActive}
-                          onChange={(e) => setDraft(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault()
-                              sendMessage()
-                            }
-                          }}
-                        />
-                        <button
-                          className="btn primary"
-                          aria-label="????????? ?????????"
-                          onClick={sendMessage}
-                          disabled={!draft.trim() || status !== 'online' || !isOnline || rateLimitActive}
-                        >
-                          ?????????
-                        </button>
-                      </div>
-                    )}
+          {user && (
+            <div className={`chat-input${rateLimitActive ? ' blocked' : ''}`}>
+              <input
+                type="text"
+                value={draft}
+                aria-label="Сообщение"
+                placeholder="Сообщение"
+                disabled={rateLimitActive}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    sendMessage()
+                  }
+                }}
+              />
+              <button
+                className="btn primary"
+                aria-label="Отправить сообщение"
+                onClick={sendMessage}
+                disabled={!draft.trim() || status !== 'online' || !isOnline || rateLimitActive}
+              >
+                Отправить
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
