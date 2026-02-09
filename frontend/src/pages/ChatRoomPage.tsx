@@ -283,14 +283,6 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
                   Чтобы писать в публичном чате, войдите или зарегистрируйтесь.
                 </p>
               </div>
-              <div className="actions">
-                <button className="btn primary" onClick={() => onNavigate('/login')}>
-                  Войти
-                </button>
-                <button className="btn ghost" onClick={() => onNavigate('/register')}>
-                  Регистрация
-                </button>
-              </div>
             </div>
           )}
           {user && (
