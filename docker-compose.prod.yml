@@ -8,11 +8,11 @@ services:
     environment:
       DJANGO_DEBUG: "0"
       DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY in .env}"
-      DJANGO_ALLOWED_HOSTS: "80.253.249.107"
-      DJANGO_CSRF_TRUSTED_ORIGINS: "http://80.253.249.107"
-      DJANGO_SECURE_SSL_REDIRECT: "0"
-      DJANGO_SESSION_COOKIE_SECURE: "0"
-      DJANGO_CSRF_COOKIE_SECURE: "0"
+      DJANGO_ALLOWED_HOSTS: "slowed.sbs,www.slowed.sbs"
+      DJANGO_CSRF_TRUSTED_ORIGINS: "https://slowed.sbs,https://www.slowed.sbs"
+      DJANGO_SECURE_SSL_REDIRECT: "1"
+      DJANGO_SESSION_COOKIE_SECURE: "1"
+      DJANGO_CSRF_COOKIE_SECURE: "1"
       DJANGO_DB_ENGINE: "django.db.backends.postgresql"
       DJANGO_DB_NAME: "${POSTGRES_DB:-chatapp}"
       DJANGO_DB_USER: "${POSTGRES_USER:-chatapp}"
@@ -34,9 +34,11 @@ services:
       dockerfile: deploy/nginx.Dockerfile
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - static_volume:/static
       - media_volume:/media
+      - ./deploy/certs:/etc/nginx/certs:ro
     depends_on:
       - backend
     restart: unless-stopped

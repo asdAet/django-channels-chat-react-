@@ -13,4 +13,4 @@ FROM nginx:1.25-alpine
 COPY deploy/nginx.conf /etc/nginx/nginx.conf
 COPY --from=build /app/frontend/dist /usr/share/nginx/html
 
-EXPOSE 80
+EXPOSE 80 443
