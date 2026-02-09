@@ -15,6 +15,20 @@ const sanitizeMessage = (message: Message): Message => ({
   content: sanitizeText(message.content, MAX_MESSAGE_LENGTH),
 })
 
+const messageKey = (message: Message) => `${message.id}-${message.createdAt}`
+
+const dedupeMessages = (messages: Message[]) => {
+  const seen = new Set<string>()
+  const unique: Message[] = []
+  for (const message of messages) {
+    const key = messageKey(message)
+    if (seen.has(key)) continue
+    seen.add(key)
+    unique.push(message)
+  }
+  return unique
+}
+
 export type ChatRoomState = {
   details: RoomDetailsDto | null
   messages: Message[]
@@ -47,12 +61,13 @@ export const useChatRoom = (slug: string, user: UserProfileDto | null) => {
       .then(([info, payload]) => {
         if (requestId !== requestIdRef.current) return
         const sanitized = payload.messages.map(sanitizeMessage)
+        const unique = dedupeMessages(sanitized)
         setState({
           details: info,
-          messages: sanitized,
+          messages: unique,
           loading: false,
           loadingMore: false,
-          hasMore: sanitized.length >= PAGE_SIZE,
+          hasMore: unique.length >= PAGE_SIZE,
           error: null,
         })
       })
@@ -88,7 +103,7 @@ export const useChatRoom = (slug: string, user: UserProfileDto | null) => {
       const sanitized = payload.messages.map(sanitizeMessage)
       setState((prev) => ({
         ...prev,
-        messages: [...sanitized, ...prev.messages],
+        messages: dedupeMessages([...sanitized, ...prev.messages]),
         loadingMore: false,
         hasMore: sanitized.length >= PAGE_SIZE,
       }))
@@ -102,7 +117,8 @@ export const useChatRoom = (slug: string, user: UserProfileDto | null) => {
   const setMessages = useCallback((updater: Message[] | ((prev: Message[]) => Message[])) => {
     setState((prev) => {
       const nextMessages = typeof updater === 'function' ? updater(prev.messages) : updater
-      return { ...prev, messages: nextMessages.map(sanitizeMessage) }
+      const sanitized = nextMessages.map(sanitizeMessage)
+      return { ...prev, messages: dedupeMessages(sanitized) }
     })
   }, [])
 

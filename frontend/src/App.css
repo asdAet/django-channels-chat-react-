@@ -374,7 +374,7 @@ button:focus {
 }
 
 .ticks li::before {
-  content: '•';
+  content: '\\2022';
   margin-right: 8px;
   color: #8ae6ff;
 }
@@ -687,6 +687,54 @@ button:focus {
   color: #e2e8f5;
 }
 
+.chat-input.blocked {
+  opacity: 0.75;
+  filter: grayscale(0.1);
+}
+
+.chat-input.blocked input {
+  cursor: not-allowed;
+}
+
+.rate-limit-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-weight: 700;
+  color: #ffe8d1;
+  background: linear-gradient(
+    120deg,
+    rgba(255, 159, 67, 0.25),
+    rgba(248, 113, 113, 0.18)
+  );
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  animation: ratePulse 1.6s ease-in-out infinite;
+}
+
+.rate-limit-timer {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.2);
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes ratePulse {
+  0% {
+    transform: translateY(0);
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+  50% {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 30px rgba(251, 191, 36, 0.18);
+  }
+  100% {
+    transform: translateY(0);
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+}
+
 .mb-1 {
   margin-bottom: 6px;
 }
@@ -706,3 +754,5 @@ button:focus {
     height: 360px;
   }
 }
+
+

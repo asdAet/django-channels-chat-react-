@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { UserProfile } from '../entities/user/types'
 import { avatarFallback, formatTimestamp } from '../shared/lib/format'
 import { debugLog } from '../shared/lib/debug'
@@ -14,6 +14,7 @@ type Props = {
 }
 
 const MAX_MESSAGE_LENGTH = 1000
+const RATE_LIMIT_COOLDOWN_MS = 10_000
 
 export function ChatRoomPage({ slug, user, onNavigate }: Props) {
   const { details, messages, loading, loadingMore, hasMore, error, loadMore, setMessages } =
@@ -21,7 +22,12 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
   const isOnline = useOnlineStatus()
   const [draft, setDraft] = useState('')
   const [roomError, setRoomError] = useState<string | null>(null)
+  const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null)
+  const [now, setNow] = useState(() => Date.now())
   const listRef = useRef<HTMLDivElement | null>(null)
+  const isAtBottomRef = useRef(true)
+  const prependingRef = useRef(false)
+  const prevScrollHeightRef = useRef(0)
   const tempIdRef = useRef(0)
 
   const wsUrl = useMemo(() => {
@@ -30,9 +36,27 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
     return `${scheme}://${window.location.host}/ws/chat/${encodeURIComponent(slug)}/`
   }, [slug, user])
 
+  const applyRateLimit = useCallback((cooldownMs: number) => {
+    const until = Date.now() + cooldownMs
+    setRateLimitUntil((prev) => (prev && prev > until ? prev : until))
+    setNow(Date.now())
+  }, [])
+
   const handleMessage = (event: MessageEvent) => {
     try {
       const data = JSON.parse(event.data)
+      if (data?.error === 'rate_limited') {
+        const retryAfter = Number(data.retry_after ?? data.retryAfter ?? data.retry ?? NaN)
+        const cooldownMs = Number.isFinite(retryAfter)
+          ? Math.max(1, retryAfter) * 1000
+          : RATE_LIMIT_COOLDOWN_MS
+        applyRateLimit(cooldownMs)
+        return
+      }
+      if (data?.error === 'message_too_long') {
+        setRoomError(`Сообщение слишком длинное (макс ${MAX_MESSAGE_LENGTH} символов)`)
+        return
+      }
       if (!data.message) return
       const content = sanitizeText(String(data.message), MAX_MESSAGE_LENGTH)
       if (!content) return
@@ -61,19 +85,61 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
         setRoomError('Соединение потеряно. Пытаемся восстановить...')
       }
     },
-    onError: () => setRoomError('Ошибка соединения') ,
+    onError: () => setRoomError('Ошибка соединения'),
   })
 
   useEffect(() => {
-    if (listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight
+    if (!rateLimitUntil) return
+    const id = window.setInterval(() => {
+      const current = Date.now()
+      setNow(current)
+      if (current >= rateLimitUntil) {
+        window.clearInterval(id)
+      }
+    }, 250)
+    return () => window.clearInterval(id)
+  }, [rateLimitUntil])
+
+  const handleScroll = useCallback(() => {
+    const list = listRef.current
+    if (!list) return
+    const { scrollTop, scrollHeight, clientHeight } = list
+    const nearBottom = scrollHeight - scrollTop - clientHeight < 80
+    isAtBottomRef.current = nearBottom
+
+    if (scrollTop < 120 && hasMore && !loadingMore && !loading) {
+      prependingRef.current = true
+      prevScrollHeightRef.current = scrollHeight
+      loadMore()
+    }
+  }, [hasMore, loadingMore, loading, loadMore])
+
+  useEffect(() => {
+    const list = listRef.current
+    if (!list) return
+    if (prependingRef.current) {
+      const delta = list.scrollHeight - prevScrollHeightRef.current
+      list.scrollTop = list.scrollTop + delta
+      prependingRef.current = false
+      return
+    }
+    if (isAtBottomRef.current) {
+      list.scrollTop = list.scrollHeight
     }
   }, [messages])
+
+  const rateLimitRemainingMs = rateLimitUntil ? Math.max(0, rateLimitUntil - now) : 0
+  const rateLimitActive = rateLimitRemainingMs > 0
+  const rateLimitSeconds = Math.ceil(rateLimitRemainingMs / 1000)
 
   const sendMessage = () => {
     if (!user) return
     const raw = draft
     if (!raw.trim()) return
+    if (rateLimitActive) {
+      setRoomError(`Слишком часто. Подождите ${rateLimitSeconds} сек.`)
+      return
+    }
     if (raw.length > MAX_MESSAGE_LENGTH) {
       setRoomError(`Сообщение слишком длинное (макс ${MAX_MESSAGE_LENGTH} символов)`)
       return
@@ -128,7 +194,7 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
       case 'error':
         return 'Ошибка соединения'
       case 'closed':
-        return 'Соединение закрыто'
+        return 'Соединение потеряно'
       default:
         return 'Соединение...'
     }
@@ -169,18 +235,23 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
         </div>
       ) : (
         <div className="chat-box">
-          {hasMore && (
-            <button
-              className="btn outline"
-              type="button"
-              aria-label="Загрузить более ранние сообщения"
-              onClick={loadMore}
-              disabled={loadingMore}
-            >
-              {loadingMore ? 'Загружаем сообщения...' : 'Показать ранние сообщения'}
-            </button>
+          {rateLimitActive && (
+            <div className="rate-limit-banner" role="status" aria-live="polite">
+              Слишком много сообщений. Подождите{' '}
+              <span className="rate-limit-timer">{rateLimitSeconds} сек</span>
+            </div>
           )}
-          <div className="chat-log" ref={listRef} aria-live="polite">
+          <div className="chat-log" ref={listRef} aria-live="polite" onScroll={handleScroll}>
+            {loadingMore && (
+              <div className="panel muted" aria-busy="true">
+                Загружаем ранние сообщения...
+              </div>
+            )}
+            {!hasMore && (
+              <div className="panel muted" aria-live="polite">
+                Это начало истории.
+              </div>
+            )}
             {messages.map((msg) => (
               <article className="message" key={`${msg.id}-${msg.createdAt}`}>
                 <div className="avatar small">
@@ -200,12 +271,13 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
               </article>
             ))}
           </div>
-          <div className="chat-input">
+          <div className={`chat-input${rateLimitActive ? ' blocked' : ''}`}>
             <input
               type="text"
               value={draft}
               aria-label="Сообщение"
               placeholder="Сообщение"
+              disabled={rateLimitActive}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -218,7 +290,7 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
               className="btn primary"
               aria-label="Отправить сообщение"
               onClick={sendMessage}
-              disabled={!draft.trim() || status !== 'online' || !isOnline}
+              disabled={!draft.trim() || status !== 'online' || !isOnline || rateLimitActive}
             >
               Отправить
             </button>
