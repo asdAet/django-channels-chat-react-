@@ -153,14 +153,20 @@ else:
             }
         }
     else:
+        sqlite_path = os.getenv("DJANGO_SQLITE_PATH")
         DATABASES = {
             "default": {
                 "ENGINE": "django.db.backends.sqlite3",
-                "NAME": BASE_DIR / "db.sqlite3",
+                "NAME": sqlite_path or (BASE_DIR / "db.sqlite3"),
             }
         }
 
-if not DEBUG and DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
+ALLOW_SQLITE_IN_PROD = env_bool("DJANGO_ALLOW_SQLITE", False)
+if (
+    not DEBUG
+    and DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3"
+    and not ALLOW_SQLITE_IN_PROD
+):
     raise ImproperlyConfigured("SQLite is not allowed in production.")
 
 
