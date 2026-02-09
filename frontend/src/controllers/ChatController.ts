@@ -1,5 +1,5 @@
 ﻿import { apiService } from '../adapters/ApiService'
-import type { RoomDetailsDto, RoomMessagesDto } from '../dto/chat'
+import type { RoomDetailsDto, RoomMessagesDto, RoomMessagesParams } from '../dto/chat'
 
 class ChatController {
   public async getPublicRoom(): Promise<RoomDetailsDto> {
@@ -10,8 +10,8 @@ class ChatController {
     return await apiService.getRoomDetails(slug)
   }
 
-  public async getRoomMessages(slug: string): Promise<RoomMessagesDto> {
-    return await apiService.getRoomMessages(slug)
+  public async getRoomMessages(slug: string, params?: RoomMessagesParams): Promise<RoomMessagesDto> {
+    return await apiService.getRoomMessages(slug, params)
   }
 }
 

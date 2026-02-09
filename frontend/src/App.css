@@ -502,6 +502,32 @@ button:focus {
   color: #6be899;
 }
 
+.pill.warning {
+  background: rgba(251, 191, 36, 0.18);
+  color: #ffd18a;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #8ae6ff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .form {
   display: flex;
   flex-direction: column;
@@ -587,6 +613,12 @@ button:focus {
   background: rgba(248, 113, 113, 0.12);
   color: #ffdede;
   border-color: rgba(248, 113, 113, 0.2);
+}
+
+.toast.warning {
+  background: rgba(251, 191, 36, 0.12);
+  color: #ffe8a3;
+  border-color: rgba(251, 191, 36, 0.3);
 }
 
 .chat {

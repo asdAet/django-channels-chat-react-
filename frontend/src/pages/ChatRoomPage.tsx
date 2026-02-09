@@ -1,8 +1,11 @@
-﻿import { useEffect, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import type { UserProfile } from '../entities/user/types'
 import { avatarFallback, formatTimestamp } from '../shared/lib/format'
 import { debugLog } from '../shared/lib/debug'
 import { useChatRoom } from '../hooks/useChatRoom'
+import { useOnlineStatus } from '../hooks/useOnlineStatus'
+import { useReconnectingWebSocket } from '../hooks/useReconnectingWebSocket'
+import { sanitizeText } from '../shared/lib/sanitize'
 
 type Props = {
   slug: string
@@ -10,46 +13,56 @@ type Props = {
   onNavigate: (path: string) => void
 }
 
+const MAX_MESSAGE_LENGTH = 1000
+
 export function ChatRoomPage({ slug, user, onNavigate }: Props) {
-  const { details, messages, loading, error, setMessages } = useChatRoom(slug, user)
+  const { details, messages, loading, loadingMore, hasMore, error, loadMore, setMessages } =
+    useChatRoom(slug, user)
+  const isOnline = useOnlineStatus()
   const [draft, setDraft] = useState('')
-  const [status, setStatus] = useState<'idle' | 'connecting' | 'online' | 'closed'>('idle')
   const [roomError, setRoomError] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
-  const socketRef = useRef<WebSocket | null>(null)
+  const tempIdRef = useRef(0)
 
-  useEffect(() => {
-    if (!user) return
+  const wsUrl = useMemo(() => {
+    if (!user) return null
     const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const socket = new WebSocket(`${scheme}://${window.location.host}/ws/chat/${encodeURIComponent(slug)}/`)
-    socketRef.current = socket
-    socket.onopen = () => setStatus('online')
-    socket.onclose = () => setStatus('closed')
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        if (data.message) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Number(new Date()),
-              username: data.username,
-              content: data.message,
-              profilePic: data.profile_pic || null,
-              createdAt: new Date().toISOString(),
-            },
-          ])
-        }
-      } catch (error) {
-        debugLog('WS payload parse failed', error)
-      }
-    }
+    return `${scheme}://${window.location.host}/ws/chat/${encodeURIComponent(slug)}/`
+  }, [slug, user])
 
-    return () => {
-      socket.close()
-      socketRef.current = null
+  const handleMessage = (event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data)
+      if (!data.message) return
+      const content = sanitizeText(String(data.message), MAX_MESSAGE_LENGTH)
+      if (!content) return
+      tempIdRef.current += 1
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() * 1000 + tempIdRef.current,
+          username: data.username,
+          content,
+          profilePic: data.profile_pic || null,
+          createdAt: new Date().toISOString(),
+        },
+      ])
+    } catch (error) {
+      debugLog('WS payload parse failed', error)
     }
-  }, [slug, user, setMessages])
+  }
+
+  const { status, lastError, send } = useReconnectingWebSocket({
+    url: wsUrl,
+    onMessage: handleMessage,
+    onOpen: () => setRoomError(null),
+    onClose: (event) => {
+      if (event.code !== 1000 && event.code !== 1001) {
+        setRoomError('Соединение потеряно. Пытаемся восстановить...')
+      }
+    },
+    onError: () => setRoomError('Ошибка соединения') ,
+  })
 
   useEffect(() => {
     if (listRef.current) {
@@ -59,20 +72,29 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
 
   const sendMessage = () => {
     if (!user) return
-    if (!draft.trim()) return
-    if (!socketRef.current || status === 'closed') {
+    const raw = draft
+    if (!raw.trim()) return
+    if (raw.length > MAX_MESSAGE_LENGTH) {
+      setRoomError(`Сообщение слишком длинное (макс ${MAX_MESSAGE_LENGTH} символов)`)
+      return
+    }
+    if (!isOnline || status !== 'online') {
       setRoomError('Нет соединения с сервером')
       return
     }
 
-    socketRef.current.send(
-      JSON.stringify({
-        message: draft.trim(),
-        username: user.username,
-        profile_pic: user.profileImage,
-        room: slug,
-      }),
-    )
+    const cleaned = sanitizeText(raw, MAX_MESSAGE_LENGTH)
+    const payload = JSON.stringify({
+      message: cleaned,
+      username: user.username,
+      profile_pic: user.profileImage,
+      room: slug,
+    })
+
+    if (!send(payload)) {
+      setRoomError('Не удалось отправить сообщение')
+      return
+    }
     setDraft('')
   }
 
@@ -95,25 +117,70 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
   const loadError = error ? 'Не удалось загрузить комнату' : null
   const visibleError = roomError || loadError
 
+  const statusLabel = (() => {
+    switch (status) {
+      case 'online':
+        return 'WebSocket online'
+      case 'connecting':
+        return 'Подключаемся...'
+      case 'offline':
+        return 'Офлайн'
+      case 'error':
+        return 'Ошибка соединения'
+      case 'closed':
+        return 'Соединение закрыто'
+      default:
+        return 'Соединение...'
+    }
+  })()
+
+  const statusClass = status === 'online' ? 'success' : status === 'connecting' ? 'warning' : 'muted'
+
   return (
     <div className="chat">
+      {!isOnline && (
+        <div className="toast warning" role="status">
+          Нет подключения к интернету. Мы восстановим соединение автоматически.
+        </div>
+      )}
+      {lastError && status === 'error' && (
+        <div className="toast danger" role="alert">
+          Проблемы с соединением. Проверьте сеть и попробуйте еще раз.
+        </div>
+      )}
       <div className="chat-header">
         <div>
           <p className="eyebrow">Комната</p>
           <h2>{details?.createdBy || details?.name || slug}</h2>
           {details?.createdBy && <p className="muted">Создатель: {details.createdBy}</p>}
         </div>
-        <span className={`pill ${status === 'online' ? 'success' : 'muted'}`}>
-          {status === 'online' ? 'WebSocket online' : 'Соединение...'}
+        <span className={`pill ${statusClass}`} aria-live="polite">
+          <span className="status-pill">
+            {status === 'connecting' && <span className="spinner" aria-hidden="true" />}
+            {statusLabel}
+          </span>
         </span>
       </div>
 
       {visibleError && <div className="toast danger">{visibleError}</div>}
       {loading ? (
-        <div className="panel muted">Загружаем историю...</div>
+        <div className="panel muted" aria-busy="true">
+          Загружаем историю...
+        </div>
       ) : (
         <div className="chat-box">
-          <div className="chat-log" ref={listRef}>
+          {hasMore && (
+            <button
+              className="btn outline"
+              type="button"
+              aria-label="Загрузить более ранние сообщения"
+              onClick={loadMore}
+              disabled={loadingMore}
+            >
+              {loadingMore ? 'Загружаем сообщения...' : 'Показать ранние сообщения'}
+            </button>
+          )}
+          <div className="chat-log" ref={listRef} aria-live="polite">
             {messages.map((msg) => (
               <article className="message" key={`${msg.id}-${msg.createdAt}`}>
                 <div className="avatar small">
@@ -137,6 +204,7 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
             <input
               type="text"
               value={draft}
+              aria-label="Сообщение"
               placeholder="Сообщение"
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -146,7 +214,12 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
                 }
               }}
             />
-            <button className="btn primary" onClick={sendMessage} disabled={!draft.trim()}>
+            <button
+              className="btn primary"
+              aria-label="Отправить сообщение"
+              onClick={sendMessage}
+              disabled={!draft.trim() || status !== 'online' || !isOnline}
+            >
               Отправить
             </button>
           </div>
@@ -155,5 +228,3 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
     </div>
   )
 }
-
-

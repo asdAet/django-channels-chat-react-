@@ -24,6 +24,7 @@ export function TopBar({ user, onNavigate }: Props) {
           <>
             <button
               className="avatar_link"
+              aria-label="Открыть профиль"
               onClick={() => onNavigate('/profile')}
             >
               <div className="">

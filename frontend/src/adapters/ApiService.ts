@@ -159,8 +159,8 @@ class ApiService implements IApiService {
     return await getRoomDetails(this.apiClient, slug)
   }
 
-  public async getRoomMessages(slug: string) {
-    return await getRoomMessages(this.apiClient, slug)
+  public async getRoomMessages(slug: string, params?: { limit?: number; beforeId?: number }) {
+    return await getRoomMessages(this.apiClient, slug, params)
   }
 }
 

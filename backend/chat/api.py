@@ -146,7 +146,24 @@ def room_messages(request, room_slug):
     if not request.user.is_authenticated and room_slug != PUBLIC_ROOM_SLUG:
         return JsonResponse({"error": "Требуется авторизация"}, status=401)
     try:
-        messages = Message.objects.filter(room=room_slug).order_by("date_added")
+        limit_raw = request.GET.get("limit")
+        before_raw = request.GET.get("before")
+        try:
+            limit = int(limit_raw) if limit_raw else 50
+        except ValueError:
+            limit = 50
+        limit = max(1, min(limit, 200))
+
+        messages_qs = Message.objects.filter(room=room_slug)
+        if before_raw:
+            try:
+                before_id = int(before_raw)
+                messages_qs = messages_qs.filter(id__lt=before_id)
+            except ValueError:
+                pass
+
+        messages = list(messages_qs.order_by("-id")[:limit])
+        messages.reverse()
         serialized = [
             {
                 "id": message.id,

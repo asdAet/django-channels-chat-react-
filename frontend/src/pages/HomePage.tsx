@@ -1,26 +1,31 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { UserProfile } from '../entities/user/types'
 import { debugLog } from '../shared/lib/debug'
 import type { Message } from '../entities/message/types'
-import type { ApiError } from '../shared/api/types'
 import type { OnlineUser } from '../shared/api/users'
+import type { ApiError } from '../shared/api/types'
 import { usePublicRoom } from '../hooks/usePublicRoom'
 import { useChatActions } from '../hooks/useChatActions'
+import { useOnlineStatus } from '../hooks/useOnlineStatus'
+import { useReconnectingWebSocket } from '../hooks/useReconnectingWebSocket'
+import { sanitizeText } from '../shared/lib/sanitize'
 
 type Props = {
   user: UserProfile | null
   onNavigate: (path: string) => void
 }
 
+const buildTempId = (seed: number) => Date.now() * 1000 + seed
+
 export function HomePage({ user, onNavigate }: Props) {
   const { publicRoom, loading } = usePublicRoom(user)
   const { getRoomDetails, getRoomMessages } = useChatActions()
+  const isOnline = useOnlineStatus()
   const [liveMessages, setLiveMessages] = useState<Message[]>([])
   const [online, setOnline] = useState<OnlineUser[]>([])
   const [creatingRoom, setCreatingRoom] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
-  const socketRef = useRef<WebSocket | null>(null)
-  const presenceRef = useRef<WebSocket | null>(null)
+  const tempIdRef = useRef(0)
 
   const visiblePublicRoom = useMemo(() => publicRoom, [publicRoom])
   const isLoading = useMemo(() => loading, [loading])
@@ -32,110 +37,90 @@ export function HomePage({ user, onNavigate }: Props) {
       queueMicrotask(() => {
         if (active) setLiveMessages([])
       })
-      if (socketRef.current) {
-        socketRef.current.close()
-        socketRef.current = null
-      }
       return () => {
         active = false
       }
     }
 
     const roomSlug = visiblePublicRoom.slug
-    getRoomMessages(roomSlug)
+    getRoomMessages(roomSlug, { limit: 4 })
       .then((payload) => {
         if (!active) return
-        // показываем последние 4 сообщения
-        setLiveMessages(payload.messages.slice(-4))
+        const sanitized = payload.messages.map((msg) => ({
+          ...msg,
+          content: sanitizeText(msg.content, 200),
+        }))
+        setLiveMessages(sanitized.slice(-4))
       })
       .catch((err) => debugLog('Live feed history failed', err))
 
-    const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const socket = new WebSocket(
-      `${scheme}://${window.location.host}/ws/chat/${encodeURIComponent(roomSlug)}/`,
-    )
-    socketRef.current = socket
-
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        if (data.message && active) {
-          setLiveMessages((prev) => {
-            const next = [
-              ...prev,
-              {
-                id: Number(new Date()),
-                username: data.username,
-                content: data.message,
-                profilePic: data.profile_pic || null,
-                createdAt: new Date().toISOString(),
-              },
-            ]
-            return next.slice(-4)
-          })
-        }
-      } catch (error) {
-        debugLog('Live feed WS parse failed', error)
-      }
-    }
-    socket.onerror = (err) => debugLog('Live feed WS error', err)
-    socket.onclose = () => {
-      if (socketRef.current === socket) socketRef.current = null
-    }
-
     return () => {
       active = false
-      socket.close()
-      if (socketRef.current === socket) {
-        socketRef.current = null
-      }
     }
-  }, [user, visiblePublicRoom, getRoomMessages])
+  }, [visiblePublicRoom, getRoomMessages])
 
-  useEffect(() => {
-    let active = true
-    if (!user) {
-      queueMicrotask(() => setOnline([]))
-      if (presenceRef.current) {
-        presenceRef.current.close()
-        presenceRef.current = null
-      }
-      return () => {
-        active = false
-      }
-    }
-
+  const liveUrl = useMemo(() => {
+    if (!visiblePublicRoom) return null
     const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const socket = new WebSocket(`${scheme}://${window.location.host}/ws/presence/`)
-    presenceRef.current = socket
+    return `${scheme}://${window.location.host}/ws/chat/${encodeURIComponent(
+      visiblePublicRoom.slug,
+    )}/`
+  }, [visiblePublicRoom])
 
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        if (active && data.online) {
-          setOnline(data.online)
-        }
-      } catch (err) {
-        debugLog('Presence WS parse failed', err)
+  const handleLiveMessage = useCallback((event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data)
+      if (!data.message) return
+      tempIdRef.current += 1
+      const next: Message = {
+        id: buildTempId(tempIdRef.current),
+        username: data.username,
+        content: sanitizeText(String(data.message), 200),
+        profilePic: data.profile_pic || null,
+        createdAt: new Date().toISOString(),
       }
+      setLiveMessages((prev) => {
+        const updated = [...prev, next]
+        return updated.slice(-4)
+      })
+    } catch (error) {
+      debugLog('Live feed WS parse failed', error)
     }
-    socket.onerror = (err) => debugLog('Presence WS error', err)
-    socket.onclose = () => {
-      if (presenceRef.current === socket) {
-        presenceRef.current = null
-      }
-    }
+  }, [])
 
-    return () => {
-      active = false
-      socket.close()
-      if (presenceRef.current === socket) {
-        presenceRef.current = null
-      }
-    }
+  useReconnectingWebSocket({
+    url: liveUrl,
+    onMessage: handleLiveMessage,
+    onError: (err) => debugLog('Live feed WS error', err),
+  })
+
+  const presenceUrl = useMemo(() => {
+    if (!user) return null
+    const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    return `${scheme}://${window.location.host}/ws/presence/`
   }, [user])
 
-  const createRoomSlug = (length = 8) => {
+  const handlePresence = useCallback((event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data)
+      if (data.online) {
+        setOnline(data.online)
+      }
+    } catch (err) {
+      debugLog('Presence WS parse failed', err)
+    }
+  }, [])
+
+  useReconnectingWebSocket({
+    url: presenceUrl,
+    onMessage: handlePresence,
+    onError: (err) => debugLog('Presence WS error', err),
+  })
+
+  const createRoomSlug = (length = 12) => {
+    if (globalThis.crypto?.randomUUID) {
+      return globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, length)
+    }
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
     const values = new Uint8Array(length)
     if (globalThis.crypto?.getRandomValues) {
@@ -156,7 +141,7 @@ export function HomePage({ user, onNavigate }: Props) {
     let navigated = false
 
     try {
-      const maxAttempts = 5
+      const maxAttempts = 3
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         const slug = createRoomSlug()
         try {
@@ -188,6 +173,11 @@ export function HomePage({ user, onNavigate }: Props) {
 
   return (
     <div className="stack">
+      {!isOnline && (
+        <div className="toast warning" role="status">
+          Нет подключения к интернету. Мы восстановим соединение автоматически.
+        </div>
+      )}
       <section className="hero">
         <div>
           <p className="eyebrow">Django Channels + React</p>
@@ -207,7 +197,7 @@ export function HomePage({ user, onNavigate }: Props) {
         <div className="hero-card">
           <div className="badge">Прямой эфир</div>
           {visiblePublicRoom ? (
-            <div className="live-feed">
+            <div className="live-feed" aria-live="polite">
               {liveMessages.map((msg) => (
                 <div className="live-item" key={`${msg.id}-${msg.createdAt}`}>
                   <span className="live-user">{msg.username}</span>
@@ -264,13 +254,15 @@ export function HomePage({ user, onNavigate }: Props) {
             <button
               className="btn outline"
               type="button"
-              disabled={!user || creatingRoom}
+              aria-label="Создать комнату"
+              disabled={!user || creatingRoom || !isOnline}
               onClick={onCreateRoom}
             >
               {creatingRoom ? 'Создаем комнату...' : 'Создать комнату'}
             </button>
             {createError && <p className="note">{createError}</p>}
             {!user && <p className="note">Сначала войдите в аккаунт.</p>}
+            {!isOnline && <p className="note">Нет сети — создание комнаты недоступно.</p>}
           </div>
         </div>
 
@@ -328,6 +320,3 @@ export function HomePage({ user, onNavigate }: Props) {
     </div>
   )
 }
-
-
-

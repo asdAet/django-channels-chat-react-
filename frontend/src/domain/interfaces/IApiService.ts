@@ -18,5 +18,8 @@ export interface IApiService {
   updateProfile(fields: UpdateProfileInput): Promise<{ user: UserProfile }>
   getPublicRoom(): Promise<RoomDetails>
   getRoomDetails(slug: string): Promise<RoomDetails>
-  getRoomMessages(slug: string): Promise<{ messages: Message[] }>
+  getRoomMessages(
+    slug: string,
+    params?: { limit?: number; beforeId?: number },
+  ): Promise<{ messages: Message[] }>
 }

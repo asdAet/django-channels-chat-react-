@@ -9,13 +9,11 @@ export type AuthState = {
   loading: boolean
 }
 
-const withBustedProfileImage = (user: UserProfileDto): UserProfileDto => {
+const normalizeProfileImage = (user: UserProfileDto): UserProfileDto => {
   if (!user.profileImage || user.profileImage.length === 0) {
     return { ...user, profileImage: null }
   }
-
-  const bustedImage = `${user.profileImage}${user.profileImage.includes('?') ? '&' : '?'}t=${Date.now()}`
-  return { ...user, profileImage: bustedImage }
+  return user
 }
 
 export const useAuth = () => {
@@ -67,7 +65,7 @@ export const useAuth = () => {
   const updateProfile = useCallback(async (dto: UpdateProfileDto) => {
     await authController.ensureCsrf()
     const { user } = await authController.updateProfile(dto)
-    const normalizedUser = withBustedProfileImage(user)
+    const normalizedUser = normalizeProfileImage(user)
     setAuth((prev) => ({ ...prev, user: normalizedUser }))
     return { user: normalizedUser }
   }, [])
