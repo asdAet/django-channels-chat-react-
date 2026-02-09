@@ -1,7 +1,10 @@
 from datetime import timedelta
 
+from django.core.cache import cache
 from django.db import OperationalError, ProgrammingError
 from django.utils import timezone
+
+from .models import Profile
 
 
 class UpdateLastSeenMiddleware:
@@ -18,12 +21,13 @@ class UpdateLastSeenMiddleware:
         if user and user.is_authenticated:
             try:
                 now = timezone.now()
-                profile = getattr(user, "profile", None)
-                if profile:
-                    last_seen = profile.last_seen
-                    if not last_seen or now - last_seen > timedelta(seconds=10):
-                        profile.last_seen = now
-                        profile.save(update_fields=["last_seen"])
+                cache_key = f"last_seen:{user.id}"
+                cached = cache.get(cache_key)
+                if cached and now - cached <= timedelta(seconds=10):
+                    return self.get_response(request)
+
+                Profile.objects.filter(user_id=user.id).update(last_seen=now)
+                cache.set(cache_key, now, timeout=60)
             except (OperationalError, ProgrammingError):
                 # База без миграции last_seen — просто пропускаем обновление.
                 pass

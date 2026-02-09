@@ -1,5 +1,8 @@
+import re
+
 from django.http import JsonResponse
 from django.db import OperationalError, ProgrammingError, IntegrityError
+from django.core.exceptions import ObjectDoesNotExist
 from django.views.decorators.http import require_http_methods
 from django.core.files.storage import default_storage
 from django.conf import settings
@@ -16,7 +19,7 @@ def _current_avatar_path(username: str) -> str | None:
         user = User.objects.select_related("profile").get(username=username)
         image = getattr(user.profile, "image", None)
         return image.name if image and image.name else None
-    except Exception:
+    except (User.DoesNotExist, AttributeError, ObjectDoesNotExist):
         return None
 
 
@@ -25,7 +28,7 @@ def _build_profile_pic_url(request, profile_pic, username: str | None = None):
         return None
     try:
         url = profile_pic.url
-    except Exception:
+    except (AttributeError, ValueError):
         url = str(profile_pic)
 
     # Avoid double-prefixing if already absolute
@@ -75,6 +78,11 @@ def _public_room():
         return stub
 
 
+def _is_valid_room_slug(slug: str) -> bool:
+    pattern = getattr(settings, "CHAT_ROOM_SLUG_REGEX", r"^[A-Za-z0-9_-]{3,50}$")
+    return bool(re.match(pattern, slug or ""))
+
+
 @require_http_methods(["GET"])
 def public_room(request):
     room = _public_room()
@@ -83,20 +91,31 @@ def public_room(request):
 
 @require_http_methods(["GET"])
 def room_details(request, room_slug):
+    if room_slug != PUBLIC_ROOM_SLUG and not _is_valid_room_slug(room_slug):
+        return JsonResponse({"error": "Invalid room slug"}, status=400)
+
     if not request.user.is_authenticated and room_slug != PUBLIC_ROOM_SLUG:
         return JsonResponse({"error": "Требуется авторизация"}, status=401)
 
     try:
-        defaults = {"name": room_slug}
         if room_slug == PUBLIC_ROOM_SLUG:
-            defaults["name"] = PUBLIC_ROOM_NAME
-        elif request.user.is_authenticated:
-            defaults["created_by"] = request.user
+            room = _public_room()
+            created = False
+        else:
+            existing = Room.objects.filter(slug=room_slug).first()
+            if existing:
+                if existing.created_by and existing.created_by != request.user:
+                    return JsonResponse({"error": "Room slug is already taken"}, status=409)
+                room = existing
+                created = False
+            else:
+                room = Room.objects.create(
+                    slug=room_slug,
+                    name=room_slug,
+                    created_by=request.user,
+                )
+                created = True
 
-        room, created = Room.objects.get_or_create(
-            slug=room_slug,
-            defaults=defaults,
-        )
         created_by = room.created_by.username if room.created_by else None
         return JsonResponse(
             {
@@ -121,6 +140,9 @@ def room_details(request, room_slug):
 
 @require_http_methods(["GET"])
 def room_messages(request, room_slug):
+    if room_slug != PUBLIC_ROOM_SLUG and not _is_valid_room_slug(room_slug):
+        return JsonResponse({"error": "Invalid room slug"}, status=400)
+
     if not request.user.is_authenticated and room_slug != PUBLIC_ROOM_SLUG:
         return JsonResponse({"error": "Требуется авторизация"}, status=401)
     try:

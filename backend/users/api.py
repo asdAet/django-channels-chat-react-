@@ -1,12 +1,15 @@
 import json
+import time
 from datetime import timedelta
 
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.http import JsonResponse
+from django.core.cache import cache
+from django.conf import settings
 from django.middleware.csrf import get_token
 from django.utils import timezone
-from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods
 from django.db import OperationalError, ProgrammingError
 
@@ -49,6 +52,30 @@ def _collect_errors(*errors):
     return combined
 
 
+def _get_client_ip(request) -> str:
+    xff = request.META.get("HTTP_X_FORWARDED_FOR")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "")
+
+
+def _rate_limited(request, action: str) -> bool:
+    limit = int(getattr(settings, "AUTH_RATE_LIMIT", 10))
+    window = int(getattr(settings, "AUTH_RATE_WINDOW", 60))
+    ip = _get_client_ip(request) or "unknown"
+    key = f"rl:auth:{action}:{ip}"
+    now = time.time()
+    data = cache.get(key)
+    if not data or data.get("reset", 0) <= now:
+        cache.set(key, {"count": 1, "reset": now + window}, timeout=window)
+        return False
+    if data.get("count", 0) >= limit:
+        return True
+    data["count"] = data.get("count", 0) + 1
+    cache.set(key, data, timeout=max(1, int(data["reset"] - now)))
+    return False
+
+
 @ensure_csrf_cookie
 @require_http_methods(["GET"])
 def csrf_token(request):
@@ -66,8 +93,9 @@ def session_view(request):
 
 
 @require_http_methods(["POST"])
-@csrf_exempt
 def login_view(request):
+    if _rate_limited(request, "login"):
+        return JsonResponse({"error": "Too many attempts"}, status=429)
     payload = _parse_body(request)
     if payload is None or payload == {}:
         return JsonResponse(
@@ -101,7 +129,6 @@ def login_view(request):
 
 
 @require_http_methods(["POST"])
-@csrf_exempt
 def logout_view(request):
     user = getattr(request, "user", None)
     if user and user.is_authenticated:
@@ -117,13 +144,15 @@ def logout_view(request):
 
 
 @require_http_methods(["GET", "POST"])
-@csrf_exempt
 def register_view(request):
     if request.method == "GET":
         return JsonResponse(
             {"detail": "Используйте POST c полями username, password1, password2"},
             status=200,
         )
+
+    if _rate_limited(request, "register"):
+        return JsonResponse({"error": "Too many attempts"}, status=429)
 
     payload = _parse_body(request)
     if not payload:

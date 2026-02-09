@@ -1,6 +1,8 @@
 import hashlib
 import json
+import time
 from asgiref.sync import sync_to_async
+from django.core.exceptions import ObjectDoesNotExist
 from django.utils.text import slugify
 from django.conf import settings
 from django.core.cache import cache
@@ -8,7 +10,8 @@ from django.core.cache import cache
 from channels.generic.websocket import AsyncWebsocketConsumer
 
 from .constants import PUBLIC_ROOM_SLUG
-from . models import Message
+from .models import Message
+from .utils import build_profile_url
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -64,18 +67,37 @@ class ChatConsumer(AsyncWebsocketConsumer):
         :param text_data: message
         """
 
-        text_data_json = json.loads(text_data)
-        message = text_data_json['message']
-        username = text_data_json['username']
-        room = text_data_json['room']
+        try:
+            text_data_json = json.loads(text_data)
+        except json.JSONDecodeError:
+            return
+
+        message = text_data_json.get("message", "")
+        if not isinstance(message, str):
+            return
+        message = message.strip()
+        if not message:
+            return
+
+        max_len = int(getattr(settings, "CHAT_MESSAGE_MAX_LENGTH", 1000))
+        if len(message) > max_len:
+            await self.send(text_data=json.dumps({"error": "message_too_long"}))
+            return
 
         user = self.scope['user']
         if not user.is_authenticated:
             # Запрещаем постинг для неавторизованных, но соединение остаётся для чтения.
             return
 
+        if await self._rate_limited(user):
+            await self.send(text_data=json.dumps({"error": "rate_limited"}))
+            return
+
+        username = user.username
+        room = self.room_name
+
         profile_name = await self._get_profile_image_name(user)
-        profile_url = self._build_profile_url(profile_name)
+        profile_url = build_profile_url(self.scope, profile_name)
 
         # Save message to DB
         await self.save_message(message, username, profile_name, room)
@@ -126,46 +148,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
             profile = user.profile
             name = getattr(profile.image, "name", "")
             return name or ""
-        except Exception:
+        except (AttributeError, ObjectDoesNotExist):
             return ""
 
-    def _build_profile_url(self, image_name: str) -> str:
-        """
-        Return an absolute URL for the profile image based on the current connection.
-        """
-        # If it's already an absolute URL, return as is.
-        if image_name.startswith("http://") or image_name.startswith("https://"):
-            return image_name
-
-        # Ensure leading slash for media path
-        media_url = settings.MEDIA_URL or "/media/"
-        if not media_url.startswith("/"):
-            media_url = f"/{media_url}"
-        if not media_url.endswith("/"):
-            media_url = f"{media_url}/"
-
-        path = image_name
-        if not path.startswith("/"):
-            path = f"{media_url}{image_name}"
-
-        # Prefer actual server socket, then Host header.
-        server = self.scope.get("server") or (None, None)
-        host_val, port_val = server
-
-        if not host_val:
-            for header, value in self.scope.get("headers", []):
-                if header == b"host":
-                    host_val = value.decode("utf-8")
-                    break
-
-        if host_val:
-            # If host already contains port, keep it; otherwise attach scope port.
-            if ":" not in host_val and port_val:
-                host_val = f"{host_val}:{port_val}"
-            scheme = "https" if self.scope.get("scheme") == "wss" else "http"
-            return f"{scheme}://{host_val}{path}"
-
-        return path
+    @sync_to_async
+    def _rate_limited(self, user) -> bool:
+        limit = int(getattr(settings, "CHAT_MESSAGE_RATE_LIMIT", 20))
+        window = int(getattr(settings, "CHAT_MESSAGE_RATE_WINDOW", 10))
+        key = f"rl:chat:{user.id}"
+        now = time.time()
+        data = cache.get(key)
+        if not data or data.get("reset", 0) <= now:
+            cache.set(key, {"count": 1, "reset": now + window}, timeout=window)
+            return False
+        if data.get("count", 0) >= limit:
+            return True
+        data["count"] = data.get("count", 0) + 1
+        cache.set(key, data, timeout=max(1, int(data["reset"] - now)))
+        return False
 
 
 class PresenceConsumer(AsyncWebsocketConsumer):
@@ -207,7 +207,7 @@ class PresenceConsumer(AsyncWebsocketConsumer):
         count = current.get("count", 0) + 1
         image_name = getattr(getattr(user, "profile", None), "image", None)
         image_name = image_name.name if image_name else ""
-        image_url = self._build_profile_url(image_name) if image_name else None
+        image_url = build_profile_url(self.scope, image_name) if image_name else None
         data[user.username] = {"count": count, "profileImage": image_url}
         cache.set(self.cache_key, data, timeout=60 * 60)
 
@@ -233,35 +233,4 @@ class PresenceConsumer(AsyncWebsocketConsumer):
             for username, info in cleaned.items()
         ]
 
-    def _build_profile_url(self, image_name: str) -> str:
-        if not image_name:
-            return ""
-        if image_name.startswith("http://") or image_name.startswith("https://"):
-            return image_name
-
-        media_url = settings.MEDIA_URL or "/media/"
-        if not media_url.startswith("/"):
-            media_url = f"/{media_url}"
-        if not media_url.endswith("/"):
-            media_url = f"{media_url}/"
-
-        path = image_name
-        if not path.startswith("/"):
-            path = f"{media_url}{image_name}"
-
-        server = self.scope.get("server") or (None, None)
-        host_val, port_val = server
-
-        if not host_val:
-            for header, value in self.scope.get("headers", []):
-                if header == b"host":
-                    host_val = value.decode("utf-8")
-                    break
-
-        if host_val:
-            if ":" not in host_val and port_val:
-                host_val = f"{host_val}:{port_val}"
-            scheme = "https" if self.scope.get("scheme") == "wss" else "http"
-            return f"{scheme}://{host_val}{path}"
-
-        return path
+    # build_profile_url moved to chat.utils to avoid duplication

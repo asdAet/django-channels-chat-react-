@@ -2,6 +2,7 @@
 import type { UserProfile } from '../entities/user/types'
 import { debugLog } from '../shared/lib/debug'
 import type { Message } from '../entities/message/types'
+import type { ApiError } from '../shared/api/types'
 import type { OnlineUser } from '../shared/api/users'
 import { usePublicRoom } from '../hooks/usePublicRoom'
 import { useChatActions } from '../hooks/useChatActions'
@@ -158,13 +159,21 @@ export function HomePage({ user, onNavigate }: Props) {
       const maxAttempts = 5
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         const slug = createRoomSlug()
-        const details = await getRoomDetails(slug)
-        if (details.created === false) {
-          continue
+        try {
+          const details = await getRoomDetails(slug)
+          if (details.created === false) {
+            continue
+          }
+          navigated = true
+          onNavigate(`/rooms/${encodeURIComponent(slug)}`)
+          return
+        } catch (err) {
+          const apiErr = err as ApiError
+          if (apiErr && typeof apiErr.status === 'number' && apiErr.status === 409) {
+            continue
+          }
+          throw err
         }
-        navigated = true
-        onNavigate(`/rooms/${encodeURIComponent(slug)}`)
-        return
       }
       setCreateError('Не удалось создать уникальную комнату. Попробуйте еще раз.')
     } catch (err) {

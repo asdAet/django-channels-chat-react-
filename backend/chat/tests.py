@@ -1,39 +1,46 @@
-from django.test import TestCase
-from django.test import Client
-from chat.urls import urlpatterns, path
-from django.test import TestCase
-from django.test import Client
+﻿import json
 
-class TestViews(TestCase):
+from django.test import Client, TestCase
 
-    def test_url_login_redirect_not_logged_in(self):
-        with self.settings(DEBUG=False):
-            response = self.client.get('/')
-            print('Test url redirect to login page')
-            self.assertEqual(response.status_code, 302 )
-            self.assertEqual(response['location'], '/login/?next=/')
-            
-    def test_home_page_visitor(self):
-        with self.settings(DEBUG=False):
-            response = self.client.get('/login/?next=/')
-            print('Test homepage guest')
-            self.assertContains(response, 'Log In')
-            self.assertContains(response, 'Username')
-            self.assertContains(response, 'Password')
-            self.assertContains(response, 'Need An Account?')
-            self.assertContains(response, 'Sign Up Now')
 
-    def test_register_page(self):
-        with self.settings(DEBUG=False):
-            response = self.client.get('/register/')
-            print('Test register page')
-            self.assertContains(response, 'Join Today')
-            self.assertContains(response, 'Username')
-            self.assertContains(response, 'Password')
-            self.assertContains(response, 'Password confirmation')
-            self.assertContains(response, 'Already Have An Account?')
-            self.assertContains(response, 'Sign In')
+class ApiTests(TestCase):
+    def setUp(self):
+        self.client = Client(enforce_csrf_checks=True)
 
-    #TODO: Test logged in homepage(chat_home), Test logged out homepage(base.html),(chat_room, Profile(models), public_rooms, 
-    # ChatConsumer, and more. 
+    def _csrf(self):
+        response = self.client.get("/api/auth/csrf/")
+        return response.cookies["csrftoken"].value
 
+    def test_public_room(self):
+        response = self.client.get("/api/chat/public-room/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json().get("slug"), "public")
+
+    def test_private_room_requires_auth(self):
+        response = self.client.get("/api/chat/rooms/private123/")
+        self.assertEqual(response.status_code, 401)
+
+    def test_register_and_login(self):
+        csrf = self._csrf()
+        register_payload = {
+            "username": "testuser",
+            "password1": "pass12345",
+            "password2": "pass12345",
+        }
+        response = self.client.post(
+            "/api/auth/register/",
+            data=json.dumps(register_payload),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=csrf,
+        )
+        self.assertIn(response.status_code, [200, 201])
+
+        csrf = self._csrf()
+        login_payload = {"username": "testuser", "password": "pass12345"}
+        response = self.client.post(
+            "/api/auth/login/",
+            data=json.dumps(login_payload),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=csrf,
+        )
+        self.assertEqual(response.status_code, 200)

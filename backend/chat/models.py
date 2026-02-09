@@ -9,7 +9,7 @@ class Message(models.Model):
     room = models.CharField(max_length=50)
     message_content = models.TextField()
     date_added = models.DateTimeField(auto_now_add=True)
-    profile_pic = models.ImageField()
+    profile_pic = models.CharField(max_length=255, blank=True, null=True)
 
     class Meta:
         ordering = ('date_added', )
