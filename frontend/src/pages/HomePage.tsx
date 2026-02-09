@@ -201,7 +201,6 @@ export function HomePage({ user, onNavigate }: Props) {
         <div className="hero-card">
           <div className="hero-card-header">
             <div>
-              <div className="badge">Прямой эфир</div>
               <p className="muted">Публичная комната • {publicRoomLabel}</p>
             </div>
             <span className={`pill ${visiblePublicRoom ? "success" : "muted"}`}>
@@ -328,38 +327,6 @@ export function HomePage({ user, onNavigate }: Props) {
             <p className="muted">Пока никого нет в сети.</p>
           )}
         </div>
-
-        {!user && (
-          <div className="card">
-            <div className="card-header">
-              <div>
-                <p className="eyebrow">Не авторизованы</p>
-                <h3>Войдите, чтобы начать</h3>
-              </div>
-              <span className="pill muted">Гость</span>
-            </div>
-            <p className="muted">
-              Авторизация нужна только для подключения к чату. Регистрация — по
-              логину и паролю без email-подтверждения.
-            </p>
-            <div className="actions">
-              <button
-                className="btn primary"
-                type="button"
-                onClick={() => onNavigate("/login")}
-              >
-                Войти
-              </button>
-              <button
-                className="btn ghost"
-                type="button"
-                onClick={() => onNavigate("/register")}
-              >
-                Зарегистрироваться
-              </button>
-            </div>
-          </div>
-        )}
       </section>
     </div>
   );
