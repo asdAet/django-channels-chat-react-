@@ -1,6 +1,8 @@
-﻿import json
+import json
 
-from django.test import Client, TestCase
+from django.test import Client, SimpleTestCase, TestCase, override_settings
+
+from .utils import build_profile_url
 
 
 class ApiTests(TestCase):
@@ -44,3 +46,37 @@ class ApiTests(TestCase):
             HTTP_X_CSRFTOKEN=csrf,
         )
         self.assertEqual(response.status_code, 200)
+
+
+class BuildProfileUrlTests(SimpleTestCase):
+    def _scope(self, headers=None, server=None, scheme="ws"):
+        return {
+            "headers": headers or [],
+            "server": server,
+            "scheme": scheme,
+        }
+
+    @override_settings(MEDIA_URL="/media/")
+    def test_prefers_forwarded_headers(self):
+        scope = self._scope(
+            headers=[
+                (b"x-forwarded-host", b"80.253.249.107"),
+                (b"x-forwarded-proto", b"http"),
+                (b"host", b"172.18.0.4:8000"),
+            ],
+            server=("172.18.0.4", 8000),
+            scheme="ws",
+        )
+        url = build_profile_url(scope, "profile_pics/a.jpg")
+        self.assertEqual(url, "http://80.253.249.107/media/profile_pics/a.jpg")
+
+    @override_settings(MEDIA_URL="/media/")
+    def test_falls_back_to_server(self):
+        scope = self._scope(headers=[], server=("172.18.0.4", 8000), scheme="ws")
+        url = build_profile_url(scope, "profile_pics/a.jpg")
+        self.assertEqual(url, "http://172.18.0.4:8000/media/profile_pics/a.jpg")
+
+    def test_keeps_absolute_url(self):
+        scope = self._scope()
+        url = build_profile_url(scope, "https://cdn.example.com/a.jpg")
+        self.assertEqual(url, "https://cdn.example.com/a.jpg")
