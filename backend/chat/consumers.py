@@ -299,20 +299,35 @@ class PresenceConsumer(AsyncWebsocketConsumer):
                 cache.set(self.guest_cache_key, cleaned, timeout=60 * 60)
             return len(cleaned)
 
+    def _decode_header(self, value: bytes | None) -> str | None:
+        if not value:
+            return None
+        try:
+            return value.decode("utf-8")
+        except UnicodeDecodeError:
+            return value.decode("latin-1", errors="ignore")
+
     def _get_client_ip(self) -> str | None:
         headers = self.scope.get("headers", [])
         ip = None
-        for header, value in headers:
-            if header == b"x-forwarded-for":
-                try:
-                    ip = value.decode("utf-8")
-                except UnicodeDecodeError:
-                    ip = value.decode("latin-1", errors="ignore")
-                break
-        if ip:
-            ip = ip.split(",")[0].strip()
+        header_priority = (
+            b"cf-connecting-ip",
+            b"x-real-ip",
+            b"x-forwarded-for",
+        )
+        for name in header_priority:
+            for header, value in headers:
+                if header == name:
+                    ip = self._decode_header(value)
+                    break
             if ip:
-                return ip
+                break
+
+        if ip and "," in ip:
+            ip = ip.split(",")[0].strip()
+        if ip:
+            return ip
+
         client = self.scope.get("client")
         if client and isinstance(client, (list, tuple)) and client:
             return str(client[0])
