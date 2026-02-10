@@ -111,7 +111,7 @@ def room_details(request, room_slug):
             else:
                 room = Room.objects.create(
                     slug=room_slug,
-                    name=room_slug,
+                    name=f"{room_slug} - {request.user.username}",
                     created_by=request.user,
                 )
                 created = True
