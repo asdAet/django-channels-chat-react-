@@ -32,6 +32,11 @@ export function HomePage({ user, onNavigate }: Props) {
   const isLoading = useMemo(() => loading, [loading]);
   const publicRoomLabel = visiblePublicRoom?.name || "Комната для всех";
 
+  const openUserProfile = useCallback((username: string) => {
+    if (!username) return;
+    onNavigate(`/users/${encodeURIComponent(username)}`);
+  }, [onNavigate]);
+
   useEffect(() => {
     let active = true;
 
@@ -312,13 +317,20 @@ export function HomePage({ user, onNavigate }: Props) {
             <div className="online-list">
               {online.map((u) => (
                 <div className="online-item" key={u.username}>
-                  <div className="avatar tiny">
-                    {u.profileImage ? (
-                      <img src={u.profileImage} alt={u.username} />
-                    ) : (
-                      <span>{u.username[0]?.toUpperCase() || "?"}</span>
-                    )}
-                  </div>
+                  <button
+                    type="button"
+                    className="avatar_link"
+                    aria-label={`??????? ??????? ${u.username}`}
+                    onClick={() => openUserProfile(u.username)}
+                  >
+                    <div className="avatar tiny">
+                      {u.profileImage ? (
+                        <img src={u.profileImage} alt={u.username} />
+                      ) : (
+                        <span>{u.username[0]?.toUpperCase() || "?"}</span>
+                      )}
+                    </div>
+                  </button>
                   <span>{u.username}</span>
                 </div>
               ))}

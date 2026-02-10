@@ -201,6 +201,14 @@ button:focus {
   background: #d9d9d9;
 }
 
+.profile_avatar.readonly {
+  cursor: default;
+}
+
+.profile_avatar.readonly .avatar_overlay {
+  display: none;
+}
+
 .profile_avatar img {
   width: 100%;
   height: 100%;
@@ -605,6 +613,17 @@ button:focus {
   color: #e2e8f5;
 }
 
+.field textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: #e2e8f5;
+  resize: vertical;
+}
+
 .field.full {
   grid-column: 1 / -1;
 }
@@ -615,8 +634,16 @@ button:focus {
   margin: 4px 0 0;
 }
 
+.note.warning {
+  color: #ffd18a;
+}
+
 .muted {
   color: #9eb0c7;
+}
+
+.bio-text {
+  white-space: pre-wrap;
 }
 
 .panel {

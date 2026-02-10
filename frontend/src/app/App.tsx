@@ -4,6 +4,7 @@ import { navigate, parseRoute, type Route } from './router'
 import { AuthPage } from '../pages/AuthPage'
 import { HomePage } from '../pages/HomePage'
 import { ProfilePage } from '../pages/ProfilePage'
+import { UserProfilePage } from '../pages/UserProfilePage'
 import { ChatRoomPage } from '../pages/ChatRoomPage'
 import { TopBar } from '../widgets/layout/TopBar'
 import { useAuth } from '../hooks/useAuth'
@@ -118,6 +119,7 @@ export function App() {
     username: string
     email: string
     image?: File | null
+    bio?: string
   }) => {
     if (!auth.user) return
     setError(null)
@@ -168,6 +170,15 @@ export function App() {
             onSave={handleProfileSave}
             onNavigate={handleNavigate}
             onLogout={handleLogout}
+          />
+        )
+      case 'user':
+        return (
+          <UserProfilePage
+            key={route.username}
+            username={route.username}
+            currentUser={auth.user}
+            onNavigate={handleNavigate}
           />
         )
       case 'room':

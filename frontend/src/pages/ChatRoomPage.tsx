@@ -33,6 +33,11 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
   const prevScrollHeightRef = useRef(0)
   const tempIdRef = useRef(0)
 
+  const openUserProfile = useCallback((username: string) => {
+    if (!username) return
+    onNavigate(`/users/${encodeURIComponent(username)}`)
+  }, [onNavigate])
+
   const wsUrl = useMemo(() => {
     if (!user && !isPublicRoom) return null
     return `${getWebSocketBase()}/ws/chat/${encodeURIComponent(slug)}/`
@@ -292,13 +297,20 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
                 </div>
               ) : (
                 <article className="message" key={`${item.message.id}-${item.message.createdAt}`}>
-                  <div className="avatar small">
-                    {item.message.profilePic ? (
-                      <img src={item.message.profilePic} alt={item.message.username} />
-                    ) : (
-                      <span>{avatarFallback(item.message.username)}</span>
-                    )}
-                  </div>
+                  <button
+                    type="button"
+                    className="avatar_link"
+                    aria-label={`??????? ??????? ${item.message.username}`}
+                    onClick={() => openUserProfile(item.message.username)}
+                  >
+                    <div className="avatar small">
+                      {item.message.profilePic ? (
+                        <img src={item.message.profilePic} alt={item.message.username} />
+                      ) : (
+                        <span>{avatarFallback(item.message.username)}</span>
+                      )}
+                    </div>
+                  </button>
                   <div className="message-body">
                     <div className="message-meta">
                       <strong>{item.message.username}</strong>

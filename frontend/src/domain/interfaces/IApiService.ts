@@ -7,6 +7,7 @@ export type UpdateProfileInput = {
   username: string
   email: string
   image?: File | null
+  bio?: string
 }
 
 export interface IApiService {
@@ -23,4 +24,6 @@ export interface IApiService {
     slug: string,
     params?: { limit?: number; beforeId?: number },
   ): Promise<{ messages: Message[] }>
+  getUserProfile(username: string): Promise<{ user: UserProfile }>
 }
+

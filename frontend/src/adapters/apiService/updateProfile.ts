@@ -14,6 +14,10 @@ export async function updateProfile(
     form.append('image', fields.image)
   }
 
+  if (fields.bio !== undefined) {
+    form.append('bio', fields.bio)
+  }
+
   const response = await apiClient.post<{ user: UserProfile }>('/auth/profile/', form)
   return response.data
 }

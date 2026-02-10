@@ -17,7 +17,7 @@ export function TopBar({ user, onNavigate }: Props) {
         <button className="link" onClick={() => onNavigate('/rooms/public')}>
           Публичный чат
         </button>
-        {user && (<button className="link" onClick={() => onNavigate('/profile')}>Профиль</button>)}
+        {user && (<button className="link" onClick={() => onNavigate(`/users/${encodeURIComponent(user.username)}`)}>Профиль</button>)}
       </nav>
       <div className="nav-actions">
         {user ? (
@@ -25,7 +25,7 @@ export function TopBar({ user, onNavigate }: Props) {
             <button
               className="avatar_link"
               aria-label="Открыть профиль"
-              onClick={() => onNavigate('/profile')}
+              onClick={() => onNavigate(`/users/${encodeURIComponent(user.username)}`)}
             >
               <div className="">
                 <div className="avatar tiny">

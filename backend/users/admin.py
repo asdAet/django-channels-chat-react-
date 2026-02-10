@@ -15,7 +15,7 @@ class ProfileInlineForm(forms.ModelForm):
 
     class Meta:
         model = Profile
-        fields = ("image",)
+        fields = ("image", "bio")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -44,6 +44,7 @@ class ProfileInline(admin.StackedInline):
         "username_display",
         "is_staff",
         "image",
+        "bio",
         "last_seen",
         "avatar_preview",
     )
@@ -96,7 +97,7 @@ class UserAdmin(BaseUserAdmin):
 class ProfileAdminForm(ProfileInlineForm):
     class Meta(ProfileInlineForm.Meta):
         model = Profile
-        fields = ("user", "image")
+        fields = ("user", "image", "bio")
 
 
 @admin.register(Profile)
@@ -106,7 +107,7 @@ class ProfileAdmin(admin.ModelAdmin):
     list_select_related = ("user",)
     list_filter = ("user__is_staff",)
     readonly_fields = ("last_seen", "avatar_preview")
-    fields = ("user", "is_staff", "image", "last_seen", "avatar_preview")
+    fields = ("user", "is_staff", "image", "bio", "last_seen", "avatar_preview")
 
     @admin.display(boolean=True, description="Модератор/админ", ordering="user__is_staff")
     def is_staff(self, obj):

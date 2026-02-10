@@ -30,6 +30,7 @@ def _serialize_user(request, user):
         "username": user.username,
         "email": user.email,
         "profileImage": profile_image,
+        "bio": getattr(profile, "bio", "") or "",
     }
 
 
@@ -222,7 +223,40 @@ def password_rules(request):
     return JsonResponse({"rules": password_validation.password_validators_help_texts()})
 
 
+@require_http_methods(["GET"])
+def public_profile_view(request, username: str):
+    if not username:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    user = (
+        User.objects.filter(username=username)
+        .select_related("profile")
+        .first()
+    )
+    if not user:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    profile = getattr(user, "profile", None)
+    profile_image = None
+    if profile and getattr(profile, "image", None):
+        try:
+            profile_image = request.build_absolute_uri(profile.image.url)
+        except ValueError:
+            profile_image = None
+
+    return JsonResponse(
+        {
+            "user": {
+                "username": user.username,
+                "email": "",
+                "profileImage": profile_image,
+                "bio": getattr(profile, "bio", "") or "",
+            }
+        }
+    )
+
 @require_http_methods(["GET", "POST"])
+
 def profile_view(request):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Требуется авторизация"}, status=401)
@@ -230,9 +264,10 @@ def profile_view(request):
     if request.method == "GET":
         return JsonResponse({"user": _serialize_user(request, request.user)})
 
-    u_form = UserUpdateForm(request.POST, instance=request.user)
+    payload = _parse_body(request)
+    u_form = UserUpdateForm(payload, instance=request.user)
     p_form = ProfileUpdateForm(
-        request.POST, request.FILES, instance=request.user.profile
+        payload, request.FILES, instance=request.user.profile
     )
 
     if u_form.is_valid() and p_form.is_valid():

@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { avatarFallback } from '../shared/lib/format';
 import type { UserProfile } from '../entities/user/types';
 
@@ -9,6 +9,7 @@ type Props = {
     username: string;
     email: string;
     image?: File | null;
+    bio?: string;
   }) => void;
   onNavigate: (path: string) => void;
 };
@@ -17,8 +18,10 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout}: Props) {
   const [form, setForm] = useState({
     username: user?.username || '',
     email: user?.email || '',
+    bio: user?.bio || '',
   });
   const isUsernameValid = form.username.trim().length > 0;
+  const isBioValid = form.bio.length <= 1000;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [image, setImage] = useState<File | null>(null);
@@ -27,7 +30,7 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout}: Props) {
   );
 
   useEffect(() => {
-    // Чистим blob-URL, когда компонент размонтируется или меняется превью
+    // Clean blob URLs on unmount or when preview changes
     return () => {
       if (previewUrl && previewUrl.startsWith('blob:')) {
         URL.revokeObjectURL(previewUrl);
@@ -101,7 +104,7 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout}: Props) {
         className="form two-col"
         onSubmit={(event) => {
           event.preventDefault();
-          onSave({ ...form, image });
+          onSave({ ...form, image, bio: form.bio });
         }}
       >
         <label className="field">
@@ -120,8 +123,19 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout}: Props) {
             onChange={(e) => setForm({ ...form, email: e.target.value })}
           />
         </label>
+        <label className="field full">
+          <span>О себе</span>
+          <textarea
+            value={form.bio}
+            onChange={(e) => setForm({ ...form, bio: e.target.value })}
+            placeholder="Расскажите пару слов о себе"
+          />
+          {!isBioValid && (
+            <span className="note warning">Максимум 1000 символов.</span>
+          )}
+        </label>
         <div className="actions">
-          <button className="btn primary" type="submit" disabled={!isUsernameValid}>
+          <button className="btn primary" type="submit" disabled={!isUsernameValid || !isBioValid}>
             Сохранить
           </button>
           <button
@@ -140,4 +154,3 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout}: Props) {
     </div>
   );
 }
-

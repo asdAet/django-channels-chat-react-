@@ -22,4 +22,7 @@ class UserUpdateForm(forms.ModelForm):
 class ProfileUpdateForm(forms.ModelForm):
     class Meta:
         model = Profile
-        fields = ['image']
+        fields = ['image', 'bio']
+        widgets = {
+            'bio': forms.Textarea(attrs={'rows': 4, 'maxlength': 1000}),
+        }

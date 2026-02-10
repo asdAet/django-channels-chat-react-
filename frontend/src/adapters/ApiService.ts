@@ -14,6 +14,7 @@ import { getPasswordRules } from './apiService/getPasswordRules'
 import { getPublicRoom } from './apiService/getPublicRoom'
 import { getRoomDetails } from './apiService/getRoomDetails'
 import { getRoomMessages } from './apiService/getRoomMessages'
+import { getUserProfile } from './apiService/getUserProfile'
 
 const API_BASE = '/api'
 
@@ -167,6 +168,11 @@ class ApiService implements IApiService {
   public async getRoomMessages(slug: string, params?: { limit?: number; beforeId?: number }) {
     return await getRoomMessages(this.apiClient, slug, params)
   }
+
+  public async getUserProfile(username: string) {
+    return await getUserProfile(this.apiClient, username)
+  }
 }
+
 
 export const apiService = new ApiService()

@@ -16,6 +16,7 @@ export type UpdateProfileDto = {
   username: string
   email: string
   image?: File | null
+  bio?: string
 }
 
 export type SessionDto = SessionResponse

@@ -11,6 +11,7 @@ class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     image = models.ImageField(default="default.jpg", upload_to='profile_pics')
     last_seen = models.DateTimeField(null=True, blank=True)
+    bio = models.TextField(blank=True, max_length=1000)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
