@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 # Create your models here.
 
@@ -8,7 +9,7 @@ class Message(models.Model):
     username = models.CharField(max_length=50)
     room = models.CharField(max_length=50)
     message_content = models.TextField()
-    date_added = models.DateTimeField(auto_now_add=True)
+    date_added = models.DateTimeField(default=timezone.now)
     profile_pic = models.CharField(max_length=255, blank=True, null=True)
 
     class Meta:
