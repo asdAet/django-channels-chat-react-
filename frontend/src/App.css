@@ -1,5 +1,4 @@
-﻿
-.app-shell {
+﻿.app-shell {
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
@@ -41,7 +40,9 @@
   opacity: 0.86;
   cursor: pointer;
   padding: 8px 10px;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 
 .link:hover {
@@ -61,7 +62,9 @@
   cursor: pointer;
 
   opacity: 0.86;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 
 .brand_link:hover {
@@ -124,15 +127,21 @@
 .public-cta {
   position: relative;
   border: 1px solid rgba(138, 230, 255, 0.65);
-  box-shadow: 0 0 0 2px rgba(138, 230, 255, 0.18), 0 16px 36px rgba(124, 91, 255, 0.35);
+  box-shadow:
+    0 0 0 2px rgba(138, 230, 255, 0.18),
+    0 16px 36px rgba(124, 91, 255, 0.35);
 }
 
 .public-cta::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: -3px;
   border-radius: 14px;
-  background: linear-gradient(120deg, rgba(138, 230, 255, 0.55), rgba(124, 91, 255, 0.55));
+  background: linear-gradient(
+    120deg,
+    rgba(138, 230, 255, 0.55),
+    rgba(124, 91, 255, 0.55)
+  );
   opacity: 0.35;
   filter: blur(8px);
   z-index: -1;
@@ -140,7 +149,9 @@
 
 .public-cta:hover {
   transform: translateY(-2px);
-  box-shadow: 0 0 0 2px rgba(138, 230, 255, 0.28), 0 18px 40px rgba(124, 91, 255, 0.45);
+  box-shadow:
+    0 0 0 2px rgba(138, 230, 255, 0.28),
+    0 18px 40px rgba(124, 91, 255, 0.45);
 }
 
 .public-cta:focus-visible {
@@ -228,7 +239,6 @@ button:focus {
   /* background: #2d3b93; */
 }
 
-
 .profile_avatar.readonly {
   cursor: default;
 }
@@ -240,7 +250,6 @@ button:focus {
 .profile_avatar.readonly.clickable:hover {
   box-shadow: 0 0 0 3px rgba(122, 178, 255, 0.2);
 }
-
 
 .profile_avatar.readonly .avatar_overlay {
   display: none;
@@ -271,7 +280,6 @@ button:focus {
 .profile_avatar:hover .avatar_overlay {
   opacity: 1;
 }
-
 
 .avatar-lightbox {
   position: fixed;
@@ -304,14 +312,13 @@ button:focus {
   transform-origin: center;
 }
 
-
 .avatar-lightbox__image {
   max-width: 100%;
   max-height: 100%;
   width: auto;
   height: auto;
   object-fit: contain;
-  border-radius: 16px; 
+  border-radius: 16px;
   display: block;
   will-change: transform;
 }
@@ -513,7 +520,7 @@ button:focus {
 }
 
 .ticks li::before {
-  content: '\2022';
+  content: "\2022";
   margin-right: 8px;
   color: #8ae6ff;
 }
@@ -934,7 +941,6 @@ button:focus {
   letter-spacing: 0.2px;
 }
 
-
 .message {
   display: flex;
   gap: 10px;
@@ -1030,9 +1036,6 @@ button:focus {
   margin-bottom: 6px;
 }
 
-
-
-
 .profile_header {
   display: flex;
   align-items: baseline;
@@ -1062,7 +1065,6 @@ button:focus {
   text-align: right;
   width: 100%;
 }
-
 
 .avatar-lightbox__content.is-zoomed {
   cursor: grab;

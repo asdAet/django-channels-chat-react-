@@ -74,7 +74,7 @@ class ProfileImageProcessingTests(TestCase):
         buf.seek(0)
         return SimpleUploadedFile("avatar.jpg", buf.getvalue(), content_type="image/png")
 
-    def test_profile_save_converts_rgba_for_jpeg_extension(self):
+    def test_profile_save_keeps_original_size_without_resize(self):
         user = User.objects.create_user(username="imguser", password="pass12345")
         profile = user.profile
         profile.image = self._make_rgba_upload_with_jpg_name()
@@ -83,9 +83,9 @@ class ProfileImageProcessingTests(TestCase):
         profile.refresh_from_db()
 
         with Image.open(profile.image.path) as saved:
-            self.assertLessEqual(saved.width, 300)
-            self.assertLessEqual(saved.height, 300)
-            self.assertNotEqual(saved.mode, "RGBA")
+            self.assertEqual(saved.width, 800)
+            self.assertEqual(saved.height, 600)
+            self.assertEqual(saved.mode, "RGBA")
 
 
 class UserSignalsTests(TestCase):

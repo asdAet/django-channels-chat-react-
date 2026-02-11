@@ -1,17 +1,117 @@
-﻿import { apiService } from '../adapters/ApiService'
+import { apiService } from '../adapters/ApiService'
 import type { RoomDetailsDto, RoomMessagesDto, RoomMessagesParams } from '../dto/chat'
+
+type CacheEntry<T> = {
+  value: T
+  expiresAt: number
+}
+
+const PUBLIC_ROOM_TTL_MS = 60_000
+const ROOM_DETAILS_TTL_MS = 30_000
+const ROOM_MESSAGES_TTL_MS = 15_000
+const MAX_MESSAGE_CACHE_ENTRIES = 120
+
+const roomDetailsCache = new Map<string, CacheEntry<RoomDetailsDto>>()
+const roomMessagesCache = new Map<string, CacheEntry<RoomMessagesDto>>()
+
+let publicRoomEntry: CacheEntry<RoomDetailsDto> | null = null
+let publicRoomInFlight: Promise<RoomDetailsDto> | null = null
+
+const roomDetailsInFlight = new Map<string, Promise<RoomDetailsDto>>()
+const roomMessagesInFlight = new Map<string, Promise<RoomMessagesDto>>()
+
+const now = () => Date.now()
+
+const hasFreshEntry = <T>(entry: CacheEntry<T> | null | undefined): entry is CacheEntry<T> =>
+  Boolean(entry && entry.expiresAt > now())
+
+const pruneMessagesCache = () => {
+  while (roomMessagesCache.size > MAX_MESSAGE_CACHE_ENTRIES) {
+    const oldestKey = roomMessagesCache.keys().next().value
+    if (!oldestKey) break
+    roomMessagesCache.delete(oldestKey)
+  }
+}
+
+const buildRoomMessagesKey = (slug: string, params?: RoomMessagesParams) => {
+  const limit = params?.limit ?? ''
+  const beforeId = params?.beforeId ?? ''
+  return `${slug}|limit=${limit}|before=${beforeId}`
+}
 
 class ChatController {
   public async getPublicRoom(): Promise<RoomDetailsDto> {
-    return await apiService.getPublicRoom()
+    if (hasFreshEntry(publicRoomEntry)) {
+      return publicRoomEntry.value
+    }
+
+    if (publicRoomInFlight) {
+      return publicRoomInFlight
+    }
+
+    publicRoomInFlight = apiService
+      .getPublicRoom()
+      .then((value) => {
+        publicRoomEntry = { value, expiresAt: now() + PUBLIC_ROOM_TTL_MS }
+        return value
+      })
+      .finally(() => {
+        publicRoomInFlight = null
+      })
+
+    return publicRoomInFlight
   }
 
   public async getRoomDetails(slug: string): Promise<RoomDetailsDto> {
-    return await apiService.getRoomDetails(slug)
+    const cached = roomDetailsCache.get(slug)
+    if (hasFreshEntry(cached)) {
+      return cached.value
+    }
+
+    const inFlight = roomDetailsInFlight.get(slug)
+    if (inFlight) {
+      return inFlight
+    }
+
+    const request = apiService
+      .getRoomDetails(slug)
+      .then((value) => {
+        roomDetailsCache.set(slug, { value, expiresAt: now() + ROOM_DETAILS_TTL_MS })
+        return value
+      })
+      .finally(() => {
+        roomDetailsInFlight.delete(slug)
+      })
+
+    roomDetailsInFlight.set(slug, request)
+    return request
   }
 
   public async getRoomMessages(slug: string, params?: RoomMessagesParams): Promise<RoomMessagesDto> {
-    return await apiService.getRoomMessages(slug, params)
+    const cacheKey = buildRoomMessagesKey(slug, params)
+    const cached = roomMessagesCache.get(cacheKey)
+    if (hasFreshEntry(cached)) {
+      return cached.value
+    }
+
+    const inFlight = roomMessagesInFlight.get(cacheKey)
+    if (inFlight) {
+      return inFlight
+    }
+
+    const request = apiService
+      .getRoomMessages(slug, params)
+      .then((value) => {
+        roomMessagesCache.set(cacheKey, { value, expiresAt: now() + ROOM_MESSAGES_TTL_MS })
+        pruneMessagesCache()
+        return value
+      })
+      .finally(() => {
+        roomMessagesInFlight.delete(cacheKey)
+      })
+
+    roomMessagesInFlight.set(cacheKey, request)
+    return request
   }
 }
 

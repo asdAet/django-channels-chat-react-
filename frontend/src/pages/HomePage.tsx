@@ -34,10 +34,13 @@ export function HomePage({ user, onNavigate }: Props) {
   const isLoading = useMemo(() => loading, [loading]);
   const publicRoomLabel = visiblePublicRoom?.name || "Комната для всех";
 
-  const openUserProfile = useCallback((username: string) => {
-    if (!username) return;
-    onNavigate(`/users/${encodeURIComponent(username)}`);
-  }, [onNavigate]);
+  const openUserProfile = useCallback(
+    (username: string) => {
+      if (!username) return;
+      onNavigate(`/users/${encodeURIComponent(username)}`);
+    },
+    [onNavigate],
+  );
 
   useEffect(() => {
     let active = true;
@@ -70,9 +73,7 @@ export function HomePage({ user, onNavigate }: Props) {
 
   const liveUrl = useMemo(() => {
     if (!visiblePublicRoom) return null;
-    return `${getWebSocketBase()}/ws/chat/${encodeURIComponent(
-      visiblePublicRoom.slug,
-    )}/`;
+    return `${getWebSocketBase()}/ws/chat/${encodeURIComponent(visiblePublicRoom.slug)}/`;
   }, [visiblePublicRoom]);
 
   const handleLiveMessage = useCallback((event: MessageEvent) => {
@@ -310,7 +311,9 @@ export function HomePage({ user, onNavigate }: Props) {
             <div>
               <p className="eyebrow">Кто онлайн</p>
             </div>
-            <span className="pill">{user ? (presenceLoading ? "..." : online.length) : "—"}</span>
+            <span className="pill">
+              {user ? (presenceLoading ? "..." : online.length) : "—"}
+            </span>
           </div>
 
           {!user ? (
@@ -329,7 +332,12 @@ export function HomePage({ user, onNavigate }: Props) {
                   >
                     <div className="avatar tiny">
                       {u.profileImage ? (
-                        <img src={u.profileImage} alt={u.username} />
+                        <img
+                          src={u.profileImage}
+                          alt={u.username}
+                          loading="lazy"
+                          decoding="async"
+                        />
                       ) : (
                         <span>{u.username[0]?.toUpperCase() || "?"}</span>
                       )}

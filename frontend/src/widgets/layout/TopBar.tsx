@@ -30,7 +30,7 @@ export function TopBar({ user, onNavigate }: Props) {
               <div className="">
                 <div className="avatar tiny">
                   {user.profileImage ? (
-                    <img src={user.profileImage} alt={user.username} />
+                    <img src={user.profileImage} alt={user.username} decoding="async" />
                   ) : (
                     <span>{avatarFallback(user.username)}</span>
                   )}

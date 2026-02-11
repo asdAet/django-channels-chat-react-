@@ -1,6 +1,6 @@
-﻿import { useEffect, useRef, useState } from 'react';
-import { avatarFallback, formatRegistrationDate } from '../shared/lib/format';
-import type { UserProfile } from '../entities/user/types';
+﻿import { useEffect, useRef, useState } from "react";
+import { avatarFallback, formatRegistrationDate } from "../shared/lib/format";
+import type { UserProfile } from "../entities/user/types";
 
 type SaveResult =
   | { ok: true }
@@ -20,9 +20,9 @@ type Props = {
 
 export function ProfilePage({ user, onSave, onNavigate, onLogout }: Props) {
   const [form, setForm] = useState({
-    username: user?.username || '',
-    email: user?.email || '',
-    bio: user?.bio || '',
+    username: user?.username || "",
+    email: user?.email || "",
+    bio: user?.bio || "",
   });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -33,7 +33,7 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [image, setImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(
-    user?.profileImage || null
+    user?.profileImage || null,
   );
 
   const clearFieldError = (field: string) => {
@@ -48,7 +48,7 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout }: Props) {
   useEffect(() => {
     // Clean blob URLs on unmount or when preview changes
     return () => {
-      if (previewUrl && previewUrl.startsWith('blob:')) {
+      if (previewUrl && previewUrl.startsWith("blob:")) {
         URL.revokeObjectURL(previewUrl);
       }
     };
@@ -56,7 +56,7 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout }: Props) {
 
   useEffect(() => {
     if (!formError) return;
-    if (!formError.includes('Проверьте введённые данные')) return;
+    if (!formError.includes("Проверьте введённые данные")) return;
     const t = window.setTimeout(() => setFormError(null), 4200);
     return () => window.clearTimeout(t);
   }, [formError]);
@@ -66,10 +66,10 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout }: Props) {
       <div className="panel">
         <p>Нужно войти, чтобы редактировать профиль.</p>
         <div className="actions">
-          <button className="btn primary" onClick={() => onNavigate('/login')}>
+          <button className="btn primary" onClick={() => onNavigate("/login")}>
             Войти
           </button>
-          <button className="btn ghost" onClick={() => onNavigate('/register')}>
+          <button className="btn ghost" onClick={() => onNavigate("/register")}>
             Регистрация
           </button>
         </div>
@@ -89,7 +89,7 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout }: Props) {
       <div className="profile_header">
         <p className="eyebrow_profile">Профиль</p>
         <div className="profile_meta">
-          Зарегистрирован: {formatRegistrationDate(user.registeredAt) || '—'}
+          Зарегистрирован: {formatRegistrationDate(user.registeredAt) || "—"}
         </div>
       </div>
 
@@ -107,7 +107,7 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout }: Props) {
           aria-label="Загрузить фото профиля"
           onClick={() => fileInputRef.current?.click()}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
+            if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
               fileInputRef.current?.click();
             }
@@ -125,14 +125,14 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout }: Props) {
           type="file"
           accept="image/*"
           ref={fileInputRef}
-          style={{ display: 'none' }}
+          style={{ display: "none" }}
           onChange={(e) => {
             const file = e.target.files?.[0] || null;
             setImage(file);
             setFormError(null);
-            clearFieldError('image');
+            clearFieldError("image");
             setPreviewUrl((prev) => {
-              if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+              if (prev && prev.startsWith("blob:")) URL.revokeObjectURL(prev);
               return file
                 ? URL.createObjectURL(file)
                 : user?.profileImage || null;
@@ -162,7 +162,7 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout }: Props) {
           }
         }}
       >
-        <label className={`field ${usernameError ? 'error' : ''}`}>
+        <label className={`field ${usernameError ? "error" : ""}`}>
           <span>Имя пользователя</span>
           <input
             type="text"
@@ -170,12 +170,12 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout }: Props) {
             onChange={(e) => {
               setForm({ ...form, username: e.target.value });
               setFormError(null);
-              clearFieldError('username');
+              clearFieldError("username");
             }}
           />
           {usernameError && <span className="note error">{usernameError}</span>}
         </label>
-        <label className={`field ${emailError ? 'error' : ''}`}>
+        <label className={`field ${emailError ? "error" : ""}`}>
           <span>Email</span>
           <input
             type="email"
@@ -183,19 +183,19 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout }: Props) {
             onChange={(e) => {
               setForm({ ...form, email: e.target.value });
               setFormError(null);
-              clearFieldError('email');
+              clearFieldError("email");
             }}
           />
           {emailError && <span className="note error">{emailError}</span>}
         </label>
-        <label className={`field full ${bioError ? 'error' : ''}`}>
+        <label className={`field full ${bioError ? "error" : ""}`}>
           <span>О себе</span>
           <textarea
             value={form.bio}
             onChange={(e) => {
               setForm({ ...form, bio: e.target.value });
               setFormError(null);
-              clearFieldError('bio');
+              clearFieldError("bio");
             }}
             placeholder="Расскажите пару слов о себе"
           />
@@ -205,13 +205,17 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout }: Props) {
           {bioError && <span className="note error">{bioError}</span>}
         </label>
         <div className="actions">
-          <button className="btn primary" type="submit" disabled={!isUsernameValid || !isBioValid}>
+          <button
+            className="btn primary"
+            type="submit"
+            disabled={!isUsernameValid || !isBioValid}
+          >
             Сохранить
           </button>
           <button
             className="btn ghost"
             type="button"
-            onClick={() => onNavigate('/')}
+            onClick={() => onNavigate("/")}
           >
             На главную
           </button>

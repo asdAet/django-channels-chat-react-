@@ -1,4 +1,12 @@
-﻿import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type TouchEvent as ReactTouchEvent, type WheelEvent as ReactWheelEvent, type MouseEvent as ReactMouseEvent } from "react";
+﻿import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type TouchEvent as ReactTouchEvent,
+  type WheelEvent as ReactWheelEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { avatarFallback, formatRegistrationDate } from "../shared/lib/format";
 import type { UserProfile } from "../entities/user/types";
 import { useUserProfile } from "../hooks/useUserProfile";
@@ -26,7 +34,12 @@ export function UserProfilePage({
 
   const hasProfileImage = Boolean(user?.profileImage);
   const pinchState = useRef<{ distance: number; zoom: number } | null>(null);
-  const dragState = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const dragState = useRef<{
+    x: number;
+    y: number;
+    panX: number;
+    panY: number;
+  } | null>(null);
 
   const clampZoom = (value: number) => Math.min(15, Math.max(1, value));
 
@@ -48,7 +61,11 @@ export function UserProfilePage({
     };
   };
 
-  const applyZoomAtPoint = (clientX: number, clientY: number, nextZoom: number) => {
+  const applyZoomAtPoint = (
+    clientX: number,
+    clientY: number,
+    nextZoom: number,
+  ) => {
     const rect = contentRef.current?.getBoundingClientRect();
     setZoom((currentZoom) => {
       const clampedZoom = clampZoom(nextZoom);
@@ -68,7 +85,9 @@ export function UserProfilePage({
           x: prev.x - dx * (scale - 1),
           y: prev.y - dy * (scale - 1),
         };
-        return clampedZoom <= 1 ? { x: 0, y: 0 } : clampPan(nextPan.x, nextPan.y, clampedZoom);
+        return clampedZoom <= 1
+          ? { x: 0, y: 0 }
+          : clampPan(nextPan.x, nextPan.y, clampedZoom);
       });
       return clampedZoom;
     });
@@ -91,7 +110,7 @@ export function UserProfilePage({
   };
 
   const getTouchDistance = (
-    touches: ReactTouchEvent<HTMLDivElement>["touches"]
+    touches: ReactTouchEvent<HTMLDivElement>["touches"],
   ) => {
     if (touches.length < 2) return null;
     const first = touches.item(0);
@@ -128,8 +147,10 @@ export function UserProfilePage({
       const touch = event.touches.item(0);
       if (!touch) return;
       event.preventDefault();
-      const nextX = dragState.current.panX + (touch.clientX - dragState.current.x);
-      const nextY = dragState.current.panY + (touch.clientY - dragState.current.y);
+      const nextX =
+        dragState.current.panX + (touch.clientX - dragState.current.x);
+      const nextY =
+        dragState.current.panY + (touch.clientY - dragState.current.y);
       setPan(clampPan(nextX, nextY));
       return;
     }
@@ -148,7 +169,9 @@ export function UserProfilePage({
       applyZoomAtPoint(centerX, centerY, nextZoom);
     } else {
       setZoom(nextZoom);
-      setPan((prev) => (nextZoom <= 1 ? { x: 0, y: 0 } : clampPan(prev.x, prev.y, nextZoom)));
+      setPan((prev) =>
+        nextZoom <= 1 ? { x: 0, y: 0 } : clampPan(prev.x, prev.y, nextZoom),
+      );
     }
   };
 
@@ -171,8 +194,10 @@ export function UserProfilePage({
   const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (!dragState.current) return;
     event.preventDefault();
-    const nextX = dragState.current.panX + (event.clientX - dragState.current.x);
-    const nextY = dragState.current.panY + (event.clientY - dragState.current.y);
+    const nextX =
+      dragState.current.panX + (event.clientX - dragState.current.x);
+    const nextY =
+      dragState.current.panY + (event.clientY - dragState.current.y);
     setPan(clampPan(nextX, nextY));
   };
 
@@ -215,7 +240,7 @@ export function UserProfilePage({
       <div className="panel">
         <p>Профиль не найден.</p>
         <div className="actions">
-          <button className="btn ghost" onClick={() => onNavigate("/")}> 
+          <button className="btn ghost" onClick={() => onNavigate("/")}>
             На главную
           </button>
         </div>
@@ -259,7 +284,9 @@ export function UserProfilePage({
           <div
             className={`avatar-lightbox__content${zoom > 1 ? " is-zoomed" : ""}`}
             ref={contentRef}
-            style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+            style={{
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            }}
             onClick={(event) => event.stopPropagation()}
             onWheel={handleWheel}
             onMouseDown={handleMouseDown}
@@ -292,11 +319,14 @@ export function UserProfilePage({
         </div>
         <div className="actions">
           {isSelf && (
-            <button className="btn primary" onClick={() => onNavigate("/profile")}>
+            <button
+              className="btn primary"
+              onClick={() => onNavigate("/profile")}
+            >
               Редактировать
             </button>
           )}
-          <button className="btn ghost" onClick={() => onNavigate("/")}> 
+          <button className="btn ghost" onClick={() => onNavigate("/")}>
             На главную
           </button>
           {isSelf && (
