@@ -1,4 +1,4 @@
-﻿import { avatarFallback, formatRegistrationDate } from "../shared/lib/format";
+import { avatarFallback, formatRegistrationDate } from "../shared/lib/format";
 import type { UserProfile } from "../entities/user/types";
 import { useUserProfile } from "../hooks/useUserProfile";
 
@@ -68,20 +68,18 @@ export function UserProfilePage({
         </div>
         <div className="actions">
           {isSelf && (
-            <button
-              className="btn primary"
-              onClick={() => onNavigate('/profile')}
-            >
+            <button className="btn primary" onClick={() => onNavigate('/profile')}>
               Редактировать
             </button>
           )}
           <button className="btn ghost" onClick={() => onNavigate("/")}>
             На главную
           </button>
-
-          <button className="btn logaut" type="button" onClick={onLogout}>
-            Выйти
-          </button>
+          {isSelf && (
+            <button className="btn logaut" type="button" onClick={onLogout}>
+              Выйти
+            </button>
+          )}
         </div>
       </div>
     </div>
