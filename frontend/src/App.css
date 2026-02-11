@@ -411,6 +411,20 @@ button:focus {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-color: rgba(138, 230, 255, 0.4) transparent;
+  scrollbar-width: thin;
+}
+
+.online-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.online-list::-webkit-scrollbar-thumb {
+  background: rgba(138, 230, 255, 0.35);
+  border-radius: 999px;
 }
 
 .online-item {
