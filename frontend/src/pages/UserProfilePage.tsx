@@ -67,7 +67,7 @@ export function UserProfilePage({
           {isSelf && (
             <button
               className="btn primary"
-              onClick={() => onNavigate(`/users/${user.username}`)}
+              onClick={() => onNavigate('/profile')}
             >
               Редактировать
             </button>

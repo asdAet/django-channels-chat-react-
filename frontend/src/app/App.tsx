@@ -149,6 +149,10 @@ export function App() {
     try {
       await updateProfile(fields)
       setBanner('Профиль обновлен')
+      const nextUsername = fields.username?.trim() || auth.user?.username
+      if (nextUsername) {
+        handleNavigate(`/users/${encodeURIComponent(nextUsername)}`)
+      }
       return { ok: true }
     } catch (err) {
       debugLog('Profile update failed', err)
