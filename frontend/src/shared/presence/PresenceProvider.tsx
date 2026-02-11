@@ -31,7 +31,7 @@ export function PresenceProvider({ user, children, ready = true }: ProviderProps
         if (user) {
           const nextImage = user.profileImage || null
           setOnlineUsers(
-            incoming.map((entry) =>
+            incoming.map((entry: OnlineUser) =>
               entry.username === user.username
                 ? { ...entry, profileImage: nextImage }
                 : entry,
