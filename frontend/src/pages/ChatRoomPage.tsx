@@ -219,9 +219,9 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
   const statusLabel = (() => {
     switch (status) {
       case "online":
-        return "WebSocket онлайн";
+        return "";
       case "connecting":
-        return "Подключаемся...";
+        return "";
       case "offline":
         return "Офлайн";
       case "error":
