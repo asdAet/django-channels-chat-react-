@@ -91,12 +91,15 @@ Jobs:
 - `GET/POST /api/auth/profile/`
 - `GET /api/auth/users/<username>/`
 - `GET /api/chat/public-room/`
+- `POST /api/chat/direct/start/`
+- `GET /api/chat/direct/chats/`
 - `GET /api/chat/rooms/<slug>/`
 - `GET /api/chat/rooms/<slug>/messages/?limit=&before=`
 
 ### WebSocket
 - `ws://<host>/ws/chat/<room_slug>/`
 - `ws://<host>/ws/presence/`
+- `ws://<host>/ws/direct/inbox/`
 
 ## Docker (production)
 ```bash

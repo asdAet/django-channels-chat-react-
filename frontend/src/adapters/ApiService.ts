@@ -18,6 +18,8 @@ import { getPublicRoom } from "./apiService/getPublicRoom";
 import { getRoomDetails } from "./apiService/getRoomDetails";
 import { getRoomMessages } from "./apiService/getRoomMessages";
 import { getUserProfile } from "./apiService/getUserProfile";
+import { startDirectChat } from "./apiService/startDirectChat";
+import { getDirectChats } from "./apiService/getDirectChats";
 
 const API_BASE = "/api";
 
@@ -195,6 +197,14 @@ class ApiService implements IApiService {
     params?: { limit?: number; beforeId?: number },
   ) {
     return await getRoomMessages(this.apiClient, slug, params);
+  }
+
+  public async startDirectChat(username: string) {
+    return await startDirectChat(this.apiClient, username);
+  }
+
+  public async getDirectChats() {
+    return await getDirectChats(this.apiClient);
   }
 
   public async getUserProfile(username: string) {

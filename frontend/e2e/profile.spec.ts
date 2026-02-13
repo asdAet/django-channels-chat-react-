@@ -1,8 +1,8 @@
-﻿import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
-async function register(page: import('@playwright/test').Page, username: string, password: string) {
+async function register(page: Page, username: string, password: string) {
   await page.goto('/register')
-  await page.getByLabel('Имя пользователя').fill(username)
+  await page.locator('input[type="text"]').first().fill(username)
   const passwordInputs = page.locator('input[type="password"]')
   await passwordInputs.nth(0).fill(password)
   await passwordInputs.nth(1).fill(password)
@@ -11,7 +11,7 @@ async function register(page: import('@playwright/test').Page, username: string,
     page.waitForResponse(
       (response) => response.url().includes('/api/auth/register/') && response.request().method() === 'POST',
     ),
-    page.getByRole('button', { name: 'Создать аккаунт' }).click(),
+    page.locator('form button[type="submit"]').click(),
   ])
 
   await expect(page).toHaveURL('/')
@@ -28,7 +28,7 @@ test('profile update works with validation and save', async ({ page }) => {
   const bioField = page.locator('textarea').first()
   await expect(bioField).toBeVisible()
   await bioField.fill(nextBio)
-  await page.getByRole('button', { name: 'Сохранить' }).click()
+  await page.locator('.actions .btn.primary[type="submit"]').click()
 
   await expect(page).toHaveURL(`/users/${encodeURIComponent(username)}`)
   await expect(page.getByText(nextBio)).toBeVisible()

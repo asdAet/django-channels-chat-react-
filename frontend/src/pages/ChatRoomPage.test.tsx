@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message } from '../entities/message/types'
 
 const wsState = vi.hoisted(() => ({
-  status: 'online' as const,
+  status: 'online' as 'online' | 'connecting' | 'offline' | 'error' | 'closed',
   lastError: null as string | null,
   send: vi.fn<(payload: string) => boolean>(),
   options: null as
@@ -15,7 +15,7 @@ const wsState = vi.hoisted(() => ({
 }))
 
 const chatRoomMock = vi.hoisted(() => ({
-  details: { slug: 'public', name: 'Public', created: false, createdBy: null },
+  details: { slug: 'public', name: 'Public', kind: 'public', created: false, createdBy: null },
   messages: [] as Message[],
   loading: false,
   loadingMore: false,
@@ -23,6 +23,13 @@ const chatRoomMock = vi.hoisted(() => ({
   error: null as string | null,
   loadMore: vi.fn(),
   setMessages: vi.fn(),
+}))
+
+const presenceMock = vi.hoisted(() => ({
+  online: [] as Array<{ username: string; profileImage: string | null }>,
+  guests: 0,
+  status: 'online' as const,
+  lastError: null as string | null,
 }))
 
 vi.mock('../hooks/useChatRoom', () => ({
@@ -45,6 +52,10 @@ vi.mock('../hooks/useReconnectingWebSocket', () => ({
   },
 }))
 
+vi.mock('../shared/presence', () => ({
+  usePresence: () => presenceMock,
+}))
+
 import { ChatRoomPage } from './ChatRoomPage'
 
 const user = {
@@ -52,6 +63,7 @@ const user = {
   email: 'demo@example.com',
   profileImage: null,
   bio: '',
+  lastSeen: null,
   registeredAt: null,
 }
 
@@ -62,7 +74,7 @@ describe('ChatRoomPage', () => {
     wsState.send.mockReset().mockReturnValue(true)
     wsState.options = null
 
-    chatRoomMock.details = { slug: 'public', name: 'Public', created: false, createdBy: null }
+    chatRoomMock.details = { slug: 'public', name: 'Public', kind: 'public', created: false, createdBy: null }
     chatRoomMock.messages = []
     chatRoomMock.loading = false
     chatRoomMock.loadingMore = false
@@ -70,6 +82,9 @@ describe('ChatRoomPage', () => {
     chatRoomMock.error = null
     chatRoomMock.loadMore.mockReset()
     chatRoomMock.setMessages.mockReset()
+    presenceMock.online = []
+    presenceMock.status = 'online'
+    presenceMock.lastError = null
   })
 
   it('shows read-only mode for guest in public room', () => {
@@ -133,5 +148,41 @@ describe('ChatRoomPage', () => {
     })
 
     expect(submit.disabled).toBe(true)
+  })
+
+  it('shows online status for direct peer', () => {
+    chatRoomMock.details = {
+      slug: 'dm_1',
+      name: 'dm',
+      kind: 'direct',
+      created: false,
+      createdBy: null,
+      peer: { username: 'alice', profileImage: null, lastSeen: '2026-02-13T10:00:00.000Z' },
+    }
+    presenceMock.online = [{ username: 'alice', profileImage: null }]
+
+    const { container } = render(
+      <ChatRoomPage slug="dm_1" user={user} onNavigate={vi.fn()} />,
+    )
+
+    expect(container.textContent).toContain('В сети')
+  })
+
+  it('shows last seen for offline direct peer', () => {
+    chatRoomMock.details = {
+      slug: 'dm_2',
+      name: 'dm',
+      kind: 'direct',
+      created: false,
+      createdBy: null,
+      peer: { username: 'bob', profileImage: null, lastSeen: '2026-02-13T10:00:00.000Z' },
+    }
+    presenceMock.online = []
+
+    const { container } = render(
+      <ChatRoomPage slug="dm_2" user={user} onNavigate={vi.fn()} />,
+    )
+
+    expect(container.textContent).toContain('Последний раз в сети:')
   })
 })

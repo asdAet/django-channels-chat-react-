@@ -46,6 +46,7 @@ class ProfileApiTests(TestCase):
         self.assertEqual(payload['username'], self.user.username)
         self.assertEqual(payload['email'], self.user.email)
         self.assertIn('bio', payload)
+        self.assertIn('lastSeen', payload)
 
     def test_profile_update_allows_same_username(self):
         self.client.force_login(self.user)
@@ -135,3 +136,4 @@ class ProfileApiTests(TestCase):
         payload = response.json()['user']
         self.assertEqual(payload['username'], self.user.username)
         self.assertEqual(payload['email'], '')
+        self.assertIn('lastSeen', payload)

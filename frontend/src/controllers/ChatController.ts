@@ -1,5 +1,11 @@
 import { apiService } from '../adapters/ApiService'
-import type { RoomDetailsDto, RoomMessagesDto, RoomMessagesParams } from '../dto/chat'
+import type {
+  DirectChatsResponseDto,
+  DirectStartResponseDto,
+  RoomDetailsDto,
+  RoomMessagesDto,
+  RoomMessagesParams,
+} from '../dto/chat'
 
 type CacheEntry<T> = {
   value: T
@@ -9,6 +15,7 @@ type CacheEntry<T> = {
 const PUBLIC_ROOM_TTL_MS = 60_000
 const ROOM_DETAILS_TTL_MS = 30_000
 const ROOM_MESSAGES_TTL_MS = 15_000
+const DIRECT_CHATS_TTL_MS = 15_000
 const MAX_MESSAGE_CACHE_ENTRIES = 320
 
 const roomDetailsCache = new Map<string, CacheEntry<RoomDetailsDto>>()
@@ -16,6 +23,9 @@ const roomMessagesCache = new Map<string, CacheEntry<RoomMessagesDto>>()
 
 let publicRoomEntry: CacheEntry<RoomDetailsDto> | null = null
 let publicRoomInFlight: Promise<RoomDetailsDto> | null = null
+
+let directChatsEntry: CacheEntry<DirectChatsResponseDto> | null = null
+let directChatsInFlight: Promise<DirectChatsResponseDto> | null = null
 
 const roomDetailsInFlight = new Map<string, Promise<RoomDetailsDto>>()
 const roomMessagesInFlight = new Map<string, Promise<RoomMessagesDto>>()
@@ -113,7 +123,34 @@ class ChatController {
     roomMessagesInFlight.set(cacheKey, request)
     return request
   }
+
+  public async startDirectChat(username: string): Promise<DirectStartResponseDto> {
+    const response = await apiService.startDirectChat(username)
+    directChatsEntry = null
+    return response
+  }
+
+  public async getDirectChats(): Promise<DirectChatsResponseDto> {
+    if (hasFreshEntry(directChatsEntry)) {
+      return directChatsEntry.value
+    }
+
+    if (directChatsInFlight) {
+      return directChatsInFlight
+    }
+
+    directChatsInFlight = apiService
+      .getDirectChats()
+      .then((value) => {
+        directChatsEntry = { value, expiresAt: now() + DIRECT_CHATS_TTL_MS }
+        return value
+      })
+      .finally(() => {
+        directChatsInFlight = null
+      })
+
+    return directChatsInFlight
+  }
 }
 
 export const chatController = new ChatController()
-

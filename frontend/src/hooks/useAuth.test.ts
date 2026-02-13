@@ -23,6 +23,7 @@ const sessionUser = {
   email: 'demo@example.com',
   profileImage: null,
   bio: '',
+  lastSeen: null,
   registeredAt: null,
 }
 

@@ -5,6 +5,7 @@ import {
   avatarFallback,
   formatDayLabel,
   formatTimestamp,
+  formatLastSeen,
 } from "../shared/lib/format";
 import { debugLog } from "../shared/lib/debug";
 import { useChatRoom } from "../hooks/useChatRoom";
@@ -12,6 +13,8 @@ import { useOnlineStatus } from "../hooks/useOnlineStatus";
 import { useReconnectingWebSocket } from "../hooks/useReconnectingWebSocket";
 import { sanitizeText } from "../shared/lib/sanitize";
 import { getWebSocketBase } from "../shared/lib/ws";
+import { useDirectInbox } from "../shared/directInbox";
+import { usePresence } from "../shared/presence";
 
 type Props = {
   slug: string;
@@ -35,6 +38,8 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
   } = useChatRoom(slug, user);
   const isPublicRoom = slug === "public";
   const isOnline = useOnlineStatus();
+  const { setActiveRoom, markRead } = useDirectInbox();
+  const { online: presenceOnline, status: presenceStatus } = usePresence();
   const [draft, setDraft] = useState("");
   const [roomError, setRoomError] = useState<string | null>(null);
   const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null);
@@ -101,6 +106,17 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
       debugLog("WS payload parse failed", error);
     }
   };
+
+  useEffect(() => {
+    if (!user || details?.kind !== "direct") return;
+
+    setActiveRoom(slug);
+    markRead(slug);
+
+    return () => {
+      setActiveRoom(null);
+    };
+  }, [details?.kind, markRead, setActiveRoom, slug, user]);
 
   const { status, lastError, send } = useReconnectingWebSocket({
     url: wsUrl,
@@ -299,8 +315,17 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
       <div className="chat-header">
         <div>
           <p className="eyebrow">Комната</p>
-          <h2>{details?.createdBy || details?.name || slug}</h2>
-          {details?.createdBy && (
+          <h2>{(details?.kind === "direct" && details?.peer?.username) || details?.createdBy || details?.name || slug}</h2>
+          {details?.kind === "direct" && (
+            <p className="muted">
+              {presenceStatus === "online" &&
+              details?.peer?.username &&
+              presenceOnline.some((entry) => entry.username === details.peer?.username)
+                ? "В сети"
+                : `Последний раз в сети: ${formatLastSeen(details?.peer?.lastSeen ?? null) || "—"}`}
+            </p>
+          )}
+          {details?.kind !== "direct" && details?.createdBy && (
             <p className="muted">Создатель: {details.createdBy}</p>
           )}
         </div>
@@ -338,11 +363,11 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
                 Загружаем ранние сообщения...
               </div>
             )}
-            {!hasMore && (
+            {/* {!hasMore && (
               <div className="panel muted" aria-live="polite">
                 Это начало истории.
               </div>
-            )}
+            )} */}
             {timeline.map((item) =>
               item.type === "day" ? (
                 <div

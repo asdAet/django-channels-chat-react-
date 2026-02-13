@@ -1,5 +1,4 @@
-﻿import json
-from unittest.mock import patch
+import json
 
 from asgiref.sync import async_to_sync
 from channels.routing import URLRouter
@@ -9,7 +8,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.core.cache import cache
 from django.test import TransactionTestCase, override_settings
 
-from chat.models import Message
+from chat.models import ChatRole, Message, Room
 from chat.routing import websocket_urlpatterns
 
 User = get_user_model()
@@ -19,7 +18,52 @@ application = URLRouter(websocket_urlpatterns)
 class ChatConsumerTests(TransactionTestCase):
     def setUp(self):
         cache.clear()
-        self.user = User.objects.create_user(username='wsuser', password='pass12345')
+        self.owner = User.objects.create_user(username='owner', password='pass12345')
+        self.member = User.objects.create_user(username='member', password='pass12345')
+        self.other = User.objects.create_user(username='other', password='pass12345')
+
+        self.private_room = Room.objects.create(
+            slug='private123',
+            name='private',
+            kind=Room.Kind.PRIVATE,
+            created_by=self.owner,
+        )
+        ChatRole.objects.create(
+            room=self.private_room,
+            user=self.owner,
+            role=ChatRole.Role.OWNER,
+            username_snapshot=self.owner.username,
+            granted_by=self.owner,
+        )
+        ChatRole.objects.create(
+            room=self.private_room,
+            user=self.member,
+            role=ChatRole.Role.MEMBER,
+            username_snapshot=self.member.username,
+            granted_by=self.owner,
+        )
+
+        self.direct_room = Room.objects.create(
+            slug='dm_abc123',
+            name='dm',
+            kind=Room.Kind.DIRECT,
+            direct_pair_key=f'{self.owner.id}:{self.member.id}',
+            created_by=self.owner,
+        )
+        ChatRole.objects.create(
+            room=self.direct_room,
+            user=self.owner,
+            role=ChatRole.Role.OWNER,
+            username_snapshot=self.owner.username,
+            granted_by=self.owner,
+        )
+        ChatRole.objects.create(
+            room=self.direct_room,
+            user=self.member,
+            role=ChatRole.Role.MEMBER,
+            username_snapshot=self.member.username,
+            granted_by=self.owner,
+        )
 
     async def _connect(self, path: str, user=None):
         communicator = WebsocketCommunicator(
@@ -42,31 +86,55 @@ class ChatConsumerTests(TransactionTestCase):
 
     def test_invalid_room_rejected(self):
         async def run():
-            _communicator, connected, _ = await self._connect('/ws/chat/public%2Fbad/')
+            _communicator, connected, close_code = await self._connect('/ws/chat/public%2Fbad/')
             self.assertFalse(connected)
+            self.assertEqual(close_code, 4404)
 
         async_to_sync(run)()
 
-    def test_private_requires_auth(self):
+    def test_missing_room_rejected(self):
+        async def run():
+            _communicator, connected, close_code = await self._connect('/ws/chat/missing123/')
+            self.assertFalse(connected)
+            self.assertEqual(close_code, 4404)
+
+        async_to_sync(run)()
+
+    def test_private_requires_role(self):
         async def run():
             _communicator, connected, close_code = await self._connect('/ws/chat/private123/')
             self.assertFalse(connected)
-            self.assertEqual(close_code, 4401)
+            self.assertEqual(close_code, 4403)
 
         async_to_sync(run)()
 
-    def test_connect_uses_hashed_group_name_when_slugify_returns_empty(self):
+    def test_private_denies_non_member(self):
         async def run():
-            with patch('chat.consumers.slugify', return_value=''):
-                communicator, connected, _ = await self._connect('/ws/chat/private123/', user=self.user)
-                self.assertTrue(connected)
-                await communicator.disconnect()
+            _communicator, connected, close_code = await self._connect('/ws/chat/private123/', user=self.other)
+            self.assertFalse(connected)
+            self.assertEqual(close_code, 4403)
+
+        async_to_sync(run)()
+
+    def test_private_allows_member(self):
+        async def run():
+            communicator, connected, _ = await self._connect('/ws/chat/private123/', user=self.member)
+            self.assertTrue(connected)
+            await communicator.disconnect()
+
+        async_to_sync(run)()
+
+    def test_direct_denies_non_participant(self):
+        async def run():
+            _communicator, connected, close_code = await self._connect('/ws/chat/dm_abc123/', user=self.other)
+            self.assertFalse(connected)
+            self.assertEqual(close_code, 4403)
 
         async_to_sync(run)()
 
     def test_invalid_json_non_string_and_blank_messages_are_ignored(self):
         async def run():
-            communicator, connected, _ = await self._connect('/ws/chat/private123/', user=self.user)
+            communicator, connected, _ = await self._connect('/ws/chat/private123/', user=self.member)
             self.assertTrue(connected)
 
             await communicator.send_to(text_data='not-json')
@@ -95,22 +163,26 @@ class ChatConsumerTests(TransactionTestCase):
         async_to_sync(run)()
         self.assertFalse(Message.objects.filter(message_content='hello').exists())
 
+    def test_viewer_cannot_write(self):
+        ChatRole.objects.filter(room=self.private_room, user=self.member).update(role=ChatRole.Role.VIEWER)
+
+        async def run():
+            communicator, connected, _ = await self._connect('/ws/chat/private123/', user=self.member)
+            self.assertTrue(connected)
+            await communicator.send_to(text_data=json.dumps({'message': 'hello'}))
+            payload = json.loads(await communicator.receive_from(timeout=2))
+            self.assertEqual(payload.get('error'), 'forbidden')
+            await communicator.disconnect()
+
+        async_to_sync(run)()
+
     def test_message_too_long(self):
         @override_settings(CHAT_MESSAGE_MAX_LENGTH=10)
         def inner():
             async def run():
-                communicator, connected, _ = await self._connect('/ws/chat/private123/', user=self.user)
+                communicator, connected, _ = await self._connect('/ws/chat/private123/', user=self.member)
                 self.assertTrue(connected)
-                await communicator.send_to(
-                    text_data=json.dumps(
-                        {
-                            'message': 'x' * 20,
-                            'username': self.user.username,
-                            'profile_pic': None,
-                            'room': 'private123',
-                        }
-                    )
-                )
+                await communicator.send_to(text_data=json.dumps({'message': 'x' * 20}))
                 payload = json.loads(await communicator.receive_from(timeout=2))
                 self.assertEqual(payload.get('error'), 'message_too_long')
                 await communicator.disconnect()
@@ -121,54 +193,72 @@ class ChatConsumerTests(TransactionTestCase):
 
     def test_message_persisted(self):
         async def run():
-            communicator, connected, _ = await self._connect('/ws/chat/private123/', user=self.user)
+            communicator, connected, _ = await self._connect('/ws/chat/private123/', user=self.member)
             self.assertTrue(connected)
-            await communicator.send_to(
-                text_data=json.dumps(
-                    {
-                        'message': 'hello',
-                        'username': self.user.username,
-                        'profile_pic': None,
-                        'room': 'private123',
-                    }
-                )
-            )
+            await communicator.send_to(text_data=json.dumps({'message': 'hello'}))
             event = json.loads(await communicator.receive_from(timeout=2))
             self.assertEqual(event.get('message'), 'hello')
-            self.assertEqual(event.get('username'), self.user.username)
+            self.assertEqual(event.get('username'), self.member.username)
             await communicator.disconnect()
 
         async_to_sync(run)()
         self.assertTrue(Message.objects.filter(room='private123', message_content='hello').exists())
 
+
+    def test_direct_message_notifies_participants_in_inbox_channel(self):
+        async def run():
+            inbox_member, connected, _ = await self._connect('/ws/direct/inbox/', user=self.member)
+            self.assertTrue(connected)
+            initial_payload = json.loads(await inbox_member.receive_from(timeout=2))
+            self.assertEqual(initial_payload.get('type'), 'direct_unread_state')
+
+            chat_owner, chat_connected, _ = await self._connect('/ws/chat/dm_abc123/', user=self.owner)
+            self.assertTrue(chat_connected)
+            await chat_owner.send_to(text_data=json.dumps({'message': 'hello dm'}))
+            await chat_owner.receive_from(timeout=2)
+
+            inbox_payload = json.loads(await inbox_member.receive_from(timeout=2))
+            self.assertEqual(inbox_payload.get('type'), 'direct_inbox_item')
+            self.assertEqual(inbox_payload['item']['slug'], self.direct_room.slug)
+            self.assertEqual(inbox_payload['item']['peer']['username'], self.owner.username)
+            self.assertTrue(inbox_payload['unread']['isUnread'])
+            self.assertEqual(inbox_payload['unread']['dialogs'], 1)
+            self.assertEqual(inbox_payload['unread']['counts'].get(self.direct_room.slug), 1)
+
+            await chat_owner.disconnect()
+            await inbox_member.disconnect()
+
+        async_to_sync(run)()
+
+    def test_direct_message_does_not_notify_non_participant_inbox_channel(self):
+        async def run():
+            inbox_outsider, connected, _ = await self._connect('/ws/direct/inbox/', user=self.other)
+            self.assertTrue(connected)
+            initial_payload = json.loads(await inbox_outsider.receive_from(timeout=2))
+            self.assertEqual(initial_payload.get('type'), 'direct_unread_state')
+
+            chat_owner, chat_connected, _ = await self._connect('/ws/chat/dm_abc123/', user=self.owner)
+            self.assertTrue(chat_connected)
+            await chat_owner.send_to(text_data=json.dumps({'message': 'hello private'}))
+            await chat_owner.receive_from(timeout=2)
+
+            self.assertTrue(await inbox_outsider.receive_nothing(timeout=0.3))
+
+            await chat_owner.disconnect()
+            await inbox_outsider.disconnect()
+
+        async_to_sync(run)()
+
     @override_settings(CHAT_MESSAGE_RATE_LIMIT=1, CHAT_MESSAGE_RATE_WINDOW=30)
     def test_rate_limit(self):
         async def run():
-            communicator, connected, _ = await self._connect('/ws/chat/private123/', user=self.user)
+            communicator, connected, _ = await self._connect('/ws/chat/private123/', user=self.member)
             self.assertTrue(connected)
 
-            await communicator.send_to(
-                text_data=json.dumps(
-                    {
-                        'message': 'first',
-                        'username': self.user.username,
-                        'profile_pic': None,
-                        'room': 'private123',
-                    }
-                )
-            )
+            await communicator.send_to(text_data=json.dumps({'message': 'first'}))
             await communicator.receive_from(timeout=2)
 
-            await communicator.send_to(
-                text_data=json.dumps(
-                    {
-                        'message': 'second',
-                        'username': self.user.username,
-                        'profile_pic': None,
-                        'room': 'private123',
-                    }
-                )
-            )
+            await communicator.send_to(text_data=json.dumps({'message': 'second'}))
             payload = json.loads(await communicator.receive_from(timeout=2))
             self.assertEqual(payload.get('error'), 'rate_limited')
             await communicator.disconnect()

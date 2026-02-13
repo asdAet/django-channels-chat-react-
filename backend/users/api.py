@@ -33,6 +33,7 @@ def _serialize_user(request, user):
         "email": user.email,
         "profileImage": profile_image,
         "bio": getattr(profile, "bio", "") or "",
+        "lastSeen": profile.last_seen.isoformat() if getattr(profile, "last_seen", None) else None,
         "registeredAt": user.date_joined.isoformat() if getattr(user, "date_joined", None) else None,
     }
 
@@ -260,6 +261,7 @@ def public_profile_view(request, username: str):
                 "email": "",
                 "profileImage": profile_image,
                 "bio": getattr(profile, "bio", "") or "",
+                "lastSeen": profile.last_seen.isoformat() if getattr(profile, "last_seen", None) else None,
                 "registeredAt": user.date_joined.isoformat() if getattr(user, "date_joined", None) else None,
             }
         }

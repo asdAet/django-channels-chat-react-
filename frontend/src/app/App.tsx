@@ -1,17 +1,20 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
+
 import '../App.css'
 import { navigate, parseRoute, type Route } from './router'
 import { AuthPage } from '../pages/AuthPage'
+import { ChatRoomPage } from '../pages/ChatRoomPage'
+import { DirectLayout } from '../pages/DirectLayout'
 import { HomePage } from '../pages/HomePage'
 import { ProfilePage } from '../pages/ProfilePage'
 import { UserProfilePage } from '../pages/UserProfilePage'
-import { ChatRoomPage } from '../pages/ChatRoomPage'
-import { TopBar } from '../widgets/layout/TopBar'
 import { useAuth } from '../hooks/useAuth'
 import { usePasswordRules } from '../hooks/usePasswordRules'
 import type { ApiError } from '../shared/api/types'
 import { debugLog } from '../shared/lib/debug'
 import { PresenceProvider } from '../shared/presence'
+import { DirectInboxProvider } from '../shared/directInbox'
+import { TopBar } from '../widgets/layout/TopBar'
 
 type ProfileFieldErrors = Record<string, string[]>
 type ProfileSaveResult =
@@ -112,7 +115,7 @@ export function App() {
     setError(null)
     try {
       await login({ username, password })
-      setBanner('Добро пожаловать обратно 👋')
+      setBanner('Добро пожаловать обратно!')
       handleNavigate('/')
     } catch (err) {
       debugLog('Login failed', err)
@@ -211,6 +214,12 @@ export function App() {
             onLogout={handleLogout}
           />
         )
+      case 'directInbox':
+        return <DirectLayout user={auth.user} onNavigate={handleNavigate} />
+      case 'directByUsername':
+        return (
+          <DirectLayout user={auth.user} username={route.username} onNavigate={handleNavigate} />
+        )
       case 'user':
         return (
           <UserProfilePage
@@ -223,14 +232,7 @@ export function App() {
           />
         )
       case 'room':
-        return (
-          <ChatRoomPage
-            key={route.slug}
-            slug={route.slug}
-            user={auth.user}
-            onNavigate={handleNavigate}
-          />
-        )
+        return <ChatRoomPage key={route.slug} slug={route.slug} user={auth.user} onNavigate={handleNavigate} />
       default:
         return <HomePage user={auth.user} onNavigate={handleNavigate} />
     }
@@ -238,26 +240,26 @@ export function App() {
 
   return (
     <PresenceProvider user={auth.user} ready={!auth.loading}>
-      <div className="app-shell">
-        <TopBar user={auth.user} onNavigate={handleNavigate} onLogout={handleLogout} />
-        <main className="content">
-          {/* {auth.loading && <div className="panel muted">Проверяем сессию...</div>} */}
-          {banner && (
-            <div className="toast success" role="status">
-              {banner}
-            </div>
-          )}
-          {error && route.name !== 'login' && route.name !== 'register' && (
-            <div className="toast danger" role="alert">
-              {error}
-            </div>
-          )}
-          {renderRoute()}
-        </main>
-      </div>
+      <DirectInboxProvider user={auth.user} ready={!auth.loading}>
+        <div className="app-shell">
+          <TopBar user={auth.user} onNavigate={handleNavigate} onLogout={handleLogout} />
+          <main className="content">
+            {banner && (
+              <div className="toast success" role="status">
+                {banner}
+              </div>
+            )}
+            {error && route.name !== 'login' && route.name !== 'register' && (
+              <div className="toast danger" role="alert">
+                {error}
+              </div>
+            )}
+            {renderRoute()}
+          </main>
+        </div>
+      </DirectInboxProvider>
     </PresenceProvider>
   )
 }
 
 export default App
-

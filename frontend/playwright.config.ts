@@ -4,9 +4,9 @@ const backendPython = process.platform === 'win32' ? '.\\.venv\\Scripts\\python.
 
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: true,
+  fullyParallel: false,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: 1,
   reporter: 'list',
   use: {
     baseURL: 'http://127.0.0.1:5173',

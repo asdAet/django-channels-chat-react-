@@ -45,6 +45,7 @@ const user = {
   email: 'demo@example.com',
   profileImage: 'https://cdn.example.com/demo.jpg',
   bio: '',
+  lastSeen: null,
   registeredAt: null,
 }
 

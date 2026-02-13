@@ -21,6 +21,7 @@ const authUser = {
   email: 'tester@example.com',
   profileImage: null,
   bio: '',
+  lastSeen: null,
   registeredAt: null,
 }
 
@@ -34,6 +35,7 @@ describe('useChatRoom', () => {
     controllerMocks.getRoomDetails.mockResolvedValue({
       slug: 'public',
       name: 'Public',
+      kind: 'public',
       created: false,
       createdBy: null,
     })
@@ -70,6 +72,7 @@ describe('useChatRoom', () => {
     controllerMocks.getRoomDetails.mockResolvedValue({
       slug: 'public',
       name: 'Public',
+      kind: 'public',
       created: false,
       createdBy: null,
     })
@@ -133,6 +136,7 @@ describe('useChatRoom', () => {
     controllerMocks.getRoomDetails.mockResolvedValue({
       slug: 'public',
       name: 'Public',
+      kind: 'public',
       created: false,
       createdBy: null,
     })
@@ -166,6 +170,7 @@ describe('useChatRoom', () => {
     controllerMocks.getRoomDetails.mockResolvedValue({
       slug: 'public',
       name: 'Public',
+      kind: 'public',
       created: false,
       createdBy: null,
     })
@@ -202,6 +207,7 @@ describe('useChatRoom', () => {
     controllerMocks.getRoomDetails.mockResolvedValue({
       slug: 'public',
       name: 'Public',
+      kind: 'public',
       created: false,
       createdBy: null,
     })

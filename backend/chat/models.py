@@ -30,8 +30,26 @@ class Message(models.Model):
 
 
 class Room(models.Model):
+    class Kind(models.TextChoices):
+        PUBLIC = "public", "Public"
+        PRIVATE = "private", "Private"
+        DIRECT = "direct", "Direct"
+
     name = models.CharField(max_length=50, db_index=True)
     slug = models.CharField(max_length=50, unique=True)
+    kind = models.CharField(
+        max_length=10,
+        choices=Kind.choices,
+        default=Kind.PRIVATE,
+        db_index=True,
+    )
+    direct_pair_key = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        unique=True,
+        db_index=True,
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -42,3 +60,45 @@ class Room(models.Model):
 
     def __str__(self):
         return str(self.name)
+
+
+class ChatRole(models.Model):
+    class Role(models.TextChoices):
+        OWNER = "owner", "Owner"
+        ADMIN = "admin", "Admin"
+        MEMBER = "member", "Member"
+        VIEWER = "viewer", "Viewer"
+        BLOCKED = "blocked", "Blocked"
+
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.CASCADE,
+        related_name="roles",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="chat_roles",
+    )
+    role = models.CharField(max_length=16, choices=Role.choices, db_index=True)
+    username_snapshot = models.CharField(max_length=150, db_index=True)
+    granted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="granted_chat_roles",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["room", "user"], name="chat_role_room_user_uniq"),
+        ]
+        indexes = [
+            models.Index(fields=["room", "role"], name="chat_role_room_role_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.room.slug}:{self.user.username}:{self.role}"

@@ -1,5 +1,6 @@
 ﻿import { useEffect, useRef, useState } from "react";
-import { avatarFallback, formatRegistrationDate } from "../shared/lib/format";
+import { avatarFallback, formatLastSeen, formatRegistrationDate } from "../shared/lib/format";
+import { usePresence } from "../shared/presence";
 import type { UserProfile } from "../entities/user/types";
 
 type SaveResult =
@@ -19,6 +20,7 @@ type Props = {
 };
 
 export function ProfilePage({ user, onSave, onNavigate, onLogout }: Props) {
+  const { online: presenceOnline, status: presenceStatus } = usePresence();
   const [form, setForm] = useState({
     username: user?.username || "",
     email: user?.email || "",
@@ -83,13 +85,22 @@ export function ProfilePage({ user, onSave, onNavigate, onLogout }: Props) {
   const imageError = fieldErrors.image?.[0];
   const genericError =
     formError || fieldErrors.non_field_errors?.[0] || fieldErrors.__all__?.[0];
+  const isUserOnline =
+    Boolean(user) &&
+    presenceStatus === "online" &&
+    presenceOnline.some((entry) => entry.username === user?.username);
 
   return (
     <div className="card wide">
       <div className="profile_header">
         <p className="eyebrow_profile">Профиль</p>
         <div className="profile_meta">
-          Зарегистрирован: {formatRegistrationDate(user.registeredAt) || "—"}
+          <span>Зарегистрирован: {formatRegistrationDate(user.registeredAt) || "—"}</span>
+          {isUserOnline ? (
+            <span>В сети</span>
+          ) : (
+            <span>Последний раз в сети: {formatLastSeen(user.lastSeen) || "—"}</span>
+          )}
         </div>
       </div>
 

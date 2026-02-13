@@ -3,6 +3,8 @@ export type Route =
   | { name: 'login' }
   | { name: 'register' }
   | { name: 'profile' }
+  | { name: 'directInbox' }
+  | { name: 'directByUsername'; username: string }
   | { name: 'user'; username: string }
   | { name: 'room'; slug: string }
 
@@ -15,6 +17,12 @@ export const parseRoute = (pathname: string): Route => {
   if (normalized === '/login') return { name: 'login' }
   if (normalized === '/register') return { name: 'register' }
   if (normalized === '/profile') return { name: 'profile' }
+  if (normalized === '/direct') return { name: 'directInbox' }
+  if (normalized.startsWith('/direct/@')) {
+    const username = decodeURIComponent(normalized.replace('/direct/@', '') || '')
+    if (!username || username.includes('/')) return { name: 'home' }
+    return { name: 'directByUsername', username }
+  }
   if (normalized.startsWith('/users/')) {
     const username = decodeURIComponent(normalized.replace('/users/', '') || '')
     return { name: 'user', username }

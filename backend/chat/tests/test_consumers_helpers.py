@@ -11,7 +11,8 @@ from django.core.cache import cache
 from django.test import TestCase, override_settings
 
 from chat.constants import CHAT_CLOSE_IDLE_CODE, PRESENCE_CLOSE_IDLE_CODE
-from chat.consumers import ChatConsumer, PresenceConsumer, _is_valid_room_slug
+from chat.consumers import ChatConsumer, DirectInboxConsumer, PresenceConsumer, _is_valid_room_slug
+from chat.models import ChatRole, Room
 
 User = get_user_model()
 
@@ -30,6 +31,7 @@ class ChatConsumerInternalTests(TestCase):
             'client': ('127.0.0.1', 50001),
         }
         consumer.room_name = 'private123'
+        consumer.room = Room(slug='private123', name='private', kind=Room.Kind.PRIVATE)
         consumer.room_group_name = 'chat_private123'
         consumer.channel_name = 'chat.channel'
         consumer.channel_layer = SimpleNamespace(
@@ -38,6 +40,7 @@ class ChatConsumerInternalTests(TestCase):
         )
         consumer.send = AsyncMock()
         consumer.close = AsyncMock()
+        consumer._can_write = AsyncMock(return_value=True)
         consumer._last_activity = 0.0
         return consumer
 
@@ -387,3 +390,169 @@ class PresenceConsumerInternalTests(TestCase):
 
         auth_consumer._add_guest.assert_not_awaited()
         auth_consumer._add_user.assert_awaited_once_with(self.user)
+
+
+class ChatConsumerDirectInboxTargetsTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.owner = User.objects.create_user(username='target_owner', password='pass12345')
+        self.member = User.objects.create_user(username='target_member', password='pass12345')
+
+    def _consumer(self):
+        consumer = ChatConsumer()
+        consumer.scope = {
+            'user': self.owner,
+            'headers': [(b'host', b'localhost:8000')],
+            'scheme': 'ws',
+            'client': ('127.0.0.1', 50005),
+        }
+        return consumer
+
+    def test_build_targets_returns_empty_for_missing_room(self):
+        consumer = self._consumer()
+        result = async_to_sync(consumer._build_direct_inbox_targets)(999999, self.owner.id, 'msg', '2026-01-01T00:00:00Z')
+        self.assertEqual(result, [])
+
+    def test_build_targets_handles_invalid_pair_key(self):
+        room = Room.objects.create(
+            slug='dm_badpair',
+            name='badpair',
+            kind=Room.Kind.DIRECT,
+            direct_pair_key='bad:value',
+            created_by=self.owner,
+        )
+        ChatRole.objects.create(
+            room=room,
+            user=self.owner,
+            role=ChatRole.Role.OWNER,
+            username_snapshot=self.owner.username,
+            granted_by=self.owner,
+        )
+
+        consumer = self._consumer()
+        result = async_to_sync(consumer._build_direct_inbox_targets)(room.id, self.owner.id, 'msg', '2026-01-01T00:00:00Z')
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['payload']['item']['slug'], room.slug)
+
+    def test_build_targets_fills_missing_pair_participant_from_pair_key(self):
+        room = Room.objects.create(
+            slug='dm_missingpair',
+            name='missingpair',
+            kind=Room.Kind.DIRECT,
+            direct_pair_key=f'{self.owner.id}:{self.member.id}',
+            created_by=self.owner,
+        )
+        ChatRole.objects.create(
+            room=room,
+            user=self.owner,
+            role=ChatRole.Role.OWNER,
+            username_snapshot=self.owner.username,
+            granted_by=self.owner,
+        )
+
+        consumer = self._consumer()
+        targets = async_to_sync(consumer._build_direct_inbox_targets)(room.id, self.owner.id, 'hello', '2026-01-01T00:00:00Z')
+
+        groups = {item['group'] for item in targets}
+        self.assertIn(f'direct_inbox_user_{self.owner.id}', groups)
+        self.assertIn(f'direct_inbox_user_{self.member.id}', groups)
+
+
+class DirectInboxConsumerInternalTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username='direct_inbox_internal', password='pass12345')
+
+    def _consumer(self):
+        consumer = DirectInboxConsumer()
+        consumer.scope = {
+            'user': self.user,
+            'headers': [(b'host', b'localhost:8000')],
+            'scheme': 'ws',
+            'client': ('127.0.0.1', 50100),
+        }
+        consumer.user = self.user
+        consumer.conn_id = 'conn_1'
+        consumer.group_name = 'direct_inbox_user_1'
+        consumer.channel_name = 'direct.channel'
+        consumer.channel_layer = SimpleNamespace(
+            group_add=AsyncMock(),
+            group_discard=AsyncMock(),
+        )
+        consumer.send = AsyncMock()
+        consumer.close = AsyncMock()
+        consumer._last_client_activity = 0.0
+        return consumer
+
+    def test_receive_handles_ping_and_payload_guards(self):
+        consumer = self._consumer()
+        consumer._touch_active_room = AsyncMock()
+        consumer._send_error = AsyncMock()
+
+        async_to_sync(consumer.receive)(json.dumps({'type': 'ping'}))
+        consumer._touch_active_room.assert_awaited_once()
+
+        async_to_sync(consumer.receive)('not-json')
+        async_to_sync(consumer.receive)(json.dumps({'type': 'set_active_room', 'roomSlug': 123}))
+        consumer._send_error.assert_awaited_with('invalid_payload')
+
+    def test_receive_set_active_room_branches(self):
+        consumer = self._consumer()
+        consumer._clear_active_room = AsyncMock()
+        consumer._set_active_room = AsyncMock()
+        consumer._send_error = AsyncMock()
+        consumer._load_room = AsyncMock(return_value=Room(slug='private123', name='p', kind=Room.Kind.PRIVATE))
+        consumer._can_read = AsyncMock(return_value=False)
+
+        async_to_sync(consumer.receive)(json.dumps({'type': 'set_active_room', 'roomSlug': None}))
+        consumer._clear_active_room.assert_awaited_once_with(conn_only=True)
+
+        async_to_sync(consumer.receive)(json.dumps({'type': 'set_active_room', 'roomSlug': 'bad/slug'}))
+        consumer._send_error.assert_awaited_with('forbidden')
+
+        async_to_sync(consumer.receive)(json.dumps({'type': 'set_active_room', 'roomSlug': 'private123'}))
+        consumer._send_error.assert_awaited_with('forbidden')
+
+    def test_receive_mark_read_branches(self):
+        consumer = self._consumer()
+        consumer._send_error = AsyncMock()
+        consumer._mark_read = AsyncMock(return_value={'dialogs': 0, 'slugs': []})
+        consumer._load_room = AsyncMock(return_value=None)
+        consumer._can_read = AsyncMock(return_value=False)
+
+        async_to_sync(consumer.receive)(json.dumps({'type': 'mark_read', 'roomSlug': 123}))
+        consumer._send_error.assert_awaited_with('invalid_payload')
+
+        async_to_sync(consumer.receive)(json.dumps({'type': 'mark_read', 'roomSlug': 'bad/slug'}))
+        consumer._send_error.assert_awaited_with('forbidden')
+
+    def test_direct_event_and_disconnect_and_watchdogs(self):
+        consumer = self._consumer()
+        consumer._clear_active_room = AsyncMock()
+
+        async_to_sync(consumer.direct_inbox_event)({'payload': 'bad'})
+        consumer.send.assert_not_awaited()
+
+        async_to_sync(consumer.disconnect)(1000)
+        consumer._clear_active_room.assert_awaited_once_with(conn_only=True)
+        consumer.channel_layer.group_discard.assert_awaited_once()
+
+        heartbeat_consumer = self._consumer()
+        heartbeat_consumer.send = AsyncMock(side_effect=RuntimeError('boom'))
+
+        async def _fast_sleep(_interval):
+            return None
+
+        with patch('chat.consumers.asyncio.sleep', new=_fast_sleep):
+            async_to_sync(heartbeat_consumer._heartbeat)()
+
+        idle_consumer = self._consumer()
+        idle_consumer.idle_timeout = 1
+        idle_consumer._last_client_activity = 0.0
+
+        with patch('chat.consumers.asyncio.sleep', new=_fast_sleep), patch(
+            'chat.consumers.time.monotonic', return_value=10.0
+        ):
+            async_to_sync(idle_consumer._idle_watchdog)()
+
+        idle_consumer.close.assert_awaited_once()

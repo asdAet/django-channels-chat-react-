@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const publicRoomMock = vi.hoisted(() => ({
-  room: { slug: 'public', name: 'Public', created: false, createdBy: null },
+  room: { slug: 'public', name: 'Public', kind: 'public', created: false, createdBy: null },
   loading: false,
 }))
 
@@ -50,12 +50,13 @@ const user = {
   email: 'demo@example.com',
   profileImage: null,
   bio: '',
+  lastSeen: null,
   registeredAt: null,
 }
 
 describe('HomePage', () => {
   beforeEach(() => {
-    publicRoomMock.room = { slug: 'public', name: 'Public', created: false, createdBy: null }
+    publicRoomMock.room = { slug: 'public', name: 'Public', kind: 'public', created: false, createdBy: null }
     publicRoomMock.loading = false
 
     chatActionsMock.getRoomDetails.mockReset()

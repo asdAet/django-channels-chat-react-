@@ -1,21 +1,28 @@
 from django.contrib import admin
 
-from .models import Message, Room
+from .models import ChatRole, Message, Room
 
 
 @admin.register(Room)
 class RoomAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug")
+    list_display = ("name", "slug", "kind", "direct_pair_key", "created_by")
     prepopulated_fields = {"slug": ("name",)}
-    search_fields = ("name", "slug")
-    
+    search_fields = ("name", "slug", "direct_pair_key")
+    list_filter = ("kind",)
+
+
+@admin.register(ChatRole)
+class ChatRoleAdmin(admin.ModelAdmin):
+    list_display = ("room", "user", "role", "username_snapshot", "granted_by", "created_at")
+    search_fields = ("room__slug", "user__username", "username_snapshot")
+    list_filter = ("role", "room__kind")
 
 
 @admin.register(Message)
 class MessageAdmin(admin.ModelAdmin):
     list_display = ("username", "user", "room", "short_message", "date_added")
     list_filter = ("room", "date_added", "user")
-    search_fields = ("username", "user__username", "message_content", "room__name")
+    search_fields = ("username", "user__username", "message_content", "room")
     date_hierarchy = "date_added"
     fields = ("username", "user", "room", "message_content", "profile_pic", "date_added")
 

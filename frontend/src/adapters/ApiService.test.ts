@@ -59,6 +59,7 @@ describe('ApiService', () => {
             email: 'updated@example.com',
             profileImage: null,
             bio: 'about me',
+            lastSeen: null,
             registeredAt: null,
           },
         })
@@ -139,15 +140,16 @@ describe('ApiService', () => {
             email: '',
             profileImage: null,
             bio: '',
+            lastSeen: null,
             registeredAt: null,
           },
         })
       }),
       http.get('/api/chat/public-room/', () =>
-        HttpResponse.json({ slug: 'public', name: 'Public', created: false, createdBy: null }),
+        HttpResponse.json({ slug: 'public', name: 'Public', kind: 'public', created: false, createdBy: null }),
       ),
       http.get('/api/chat/rooms/:slug/', ({ params }) =>
-        HttpResponse.json({ slug: String(params.slug), name: 'Room', created: false, createdBy: null }),
+        HttpResponse.json({ slug: String(params.slug), name: 'Room', kind: 'private', created: false, createdBy: null }),
       ),
       http.get('/api/chat/rooms/:slug/messages/', ({ request }) => {
         beforeParam = new URL(request.url).searchParams.get('before')

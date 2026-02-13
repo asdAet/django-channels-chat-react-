@@ -1,6 +1,11 @@
-﻿import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { RoomDetailsDto, RoomMessagesDto } from '../dto/chat'
+import type {
+  DirectChatsResponseDto,
+  DirectStartResponseDto,
+  RoomDetailsDto,
+  RoomMessagesDto,
+} from '../dto/chat'
 
 const apiMocks = vi.hoisted(() => ({
   getPublicRoom: vi.fn<() => Promise<RoomDetailsDto>>(),
@@ -8,6 +13,8 @@ const apiMocks = vi.hoisted(() => ({
   getRoomMessages: vi.fn<
     (slug: string, params?: { limit?: number; beforeId?: number }) => Promise<RoomMessagesDto>
   >(),
+  startDirectChat: vi.fn<(username: string) => Promise<DirectStartResponseDto>>(),
+  getDirectChats: vi.fn<() => Promise<DirectChatsResponseDto>>(),
 }))
 
 vi.mock('../adapters/ApiService', () => ({
@@ -27,10 +34,12 @@ describe('ChatController', () => {
     apiMocks.getPublicRoom.mockReset()
     apiMocks.getRoomDetails.mockReset()
     apiMocks.getRoomMessages.mockReset()
+    apiMocks.startDirectChat.mockReset()
+    apiMocks.getDirectChats.mockReset()
   })
 
   it('caches public room by ttl', async () => {
-    const room = { slug: 'public', name: 'Public', created: false, createdBy: null }
+    const room: RoomDetailsDto = { slug: 'public', name: 'Public', kind: 'public', created: false, createdBy: null }
     apiMocks.getPublicRoom.mockResolvedValue(room)
 
     const chatController = await loadController()
@@ -48,9 +57,9 @@ describe('ChatController', () => {
   })
 
   it('deduplicates in-flight public room request', async () => {
-    let resolve: ((value: RoomDetailsDto) => void) | null = null
+    let settle: (value: RoomDetailsDto) => void = () => undefined
     const pending = new Promise<RoomDetailsDto>((res) => {
-      resolve = res
+      settle = res
     })
     apiMocks.getPublicRoom.mockReturnValue(pending)
 
@@ -61,7 +70,7 @@ describe('ChatController', () => {
 
     expect(apiMocks.getPublicRoom).toHaveBeenCalledTimes(1)
 
-    resolve?.({ slug: 'public', name: 'Public', created: false, createdBy: null })
+    settle({ slug: 'public', name: 'Public', kind: 'public', created: false, createdBy: null })
     const [first, second] = await Promise.all([firstPromise, secondPromise])
 
     expect(first.slug).toBe('public')
@@ -72,6 +81,7 @@ describe('ChatController', () => {
     apiMocks.getRoomDetails.mockResolvedValue({
       slug: 'abc',
       name: 'Room',
+      kind: 'private',
       created: false,
       createdBy: null,
     })
@@ -105,5 +115,33 @@ describe('ChatController', () => {
       limit: 50,
       beforeId: 200,
     })
+  })
+
+  it('invalidates direct chats cache after start', async () => {
+    apiMocks.startDirectChat.mockResolvedValue({
+      slug: 'dm_123',
+      kind: 'direct',
+      peer: { username: 'alice', profileImage: null },
+    })
+    apiMocks.getDirectChats.mockResolvedValue({
+      items: [
+        {
+          slug: 'dm_123',
+          peer: { username: 'alice', profileImage: null },
+          lastMessage: 'hello',
+          lastMessageAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    })
+
+    const chatController = await loadController()
+
+    await chatController.getDirectChats()
+    await chatController.getDirectChats()
+    expect(apiMocks.getDirectChats).toHaveBeenCalledTimes(1)
+
+    await chatController.startDirectChat('alice')
+    await chatController.getDirectChats()
+    expect(apiMocks.getDirectChats).toHaveBeenCalledTimes(2)
   })
 })

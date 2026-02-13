@@ -1,9 +1,10 @@
-﻿from unittest.mock import patch
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError
 from django.test import TestCase
 
+from chat.models import ChatRole, Message, Room
 from users.models import Profile
 from users.signals import ensure_profile
 
@@ -52,3 +53,26 @@ class UserSignalsTests(TestCase):
 
         filter_qs.assert_called_once_with(user=user)
         filter_qs.return_value.first.assert_called_once()
+
+    def test_username_rename_updates_messages_and_role_snapshots(self):
+        user = User.objects.create_user(username='old_name', password='pass12345')
+        room = Room.objects.create(name='Private', slug='private123', kind=Room.Kind.PRIVATE, created_by=user)
+        ChatRole.objects.create(
+            room=room,
+            user=user,
+            role=ChatRole.Role.OWNER,
+            username_snapshot='old_name',
+            granted_by=user,
+        )
+        Message.objects.create(
+            username='old_name',
+            user=user,
+            room='private123',
+            message_content='hello',
+        )
+
+        user.username = 'new_name'
+        user.save(update_fields=['username'])
+
+        self.assertTrue(Message.objects.filter(user=user, username='new_name').exists())
+        self.assertTrue(ChatRole.objects.filter(user=user, username_snapshot='new_name').exists())

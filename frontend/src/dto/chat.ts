@@ -1,5 +1,5 @@
 import type { Message } from '../entities/message/types'
-import type { RoomDetails } from '../entities/room/types'
+import type { DirectChatListItem, RoomDetails, RoomKind, RoomPeer } from '../entities/room/types'
 
 export type RoomDetailsDto = RoomDetails
 
@@ -15,3 +15,15 @@ export type RoomMessagesDto = {
 }
 
 export type RoomMessagesParams = { limit?: number; beforeId?: number }
+
+export type DirectStartResponseDto = {
+  slug: string
+  kind: RoomKind
+  peer: RoomPeer
+}
+
+export type DirectChatsResponseDto = {
+  items: DirectChatListItem[]
+}
+
+export type DirectChatListItemDto = DirectChatListItem

@@ -17,10 +17,12 @@ class MockWebSocket {
   public onmessage: ((event: MessageEvent) => void) | null = null
   public sent: string[] = []
 
-  constructor(
-    public readonly url: string,
-    public readonly protocols?: string | string[],
-  ) {
+  public readonly url: string
+  public readonly protocols?: string | string[]
+
+  constructor(url: string, protocols?: string | string[]) {
+    this.url = url
+    this.protocols = protocols
     MockWebSocket.instances.push(this)
   }
 
