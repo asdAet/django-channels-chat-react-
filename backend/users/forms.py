@@ -15,13 +15,15 @@ class UserRegisterForm(UserCreationForm):
         fields = ["username", "password1", "password2"]
 
     def clean_username(self):
-        username = super().clean_username().strip()
+        username = (self.cleaned_data.get("username") or "").strip()
         if not username:
             return username
         if len(username) > USERNAME_MAX_LENGTH:
             raise forms.ValidationError(
                 f"Максимум {USERNAME_MAX_LENGTH} символов."
             )
+        if User.objects.filter(username=username).exists():
+            raise forms.ValidationError("Имя пользователя уже занято")
         return username
 
 
