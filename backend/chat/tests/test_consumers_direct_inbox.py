@@ -9,7 +9,7 @@ from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.core.cache import cache
-from django.test import TransactionTestCase
+from django.test import TransactionTestCase, override_settings
 
 from chat.direct_inbox import mark_unread
 from chat.models import ChatRole, Room
@@ -103,6 +103,22 @@ class DirectInboxConsumerTests(TransactionTestCase):
             _communicator, connected, close_code = await self._connect_inbox()
             self.assertFalse(connected)
             self.assertEqual(close_code, 4401)
+
+        async_to_sync(run)()
+
+    @override_settings(WS_CONNECT_RATE_LIMIT=1, WS_CONNECT_RATE_WINDOW=60)
+    def test_connect_rate_limit_for_inbox(self):
+        """Отклоняет повторное подключение inbox websocket с одного IP."""
+        async def run():
+            """Проверяет сценарий `run`."""
+            first, connected, _ = await self._connect_inbox(self.owner)
+            self.assertTrue(connected)
+
+            _second, second_connected, close_code = await self._connect_inbox(self.owner)
+            self.assertFalse(second_connected)
+            self.assertEqual(close_code, 4429)
+
+            await first.disconnect()
 
         async_to_sync(run)()
 

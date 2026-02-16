@@ -5,15 +5,21 @@
 import json
 import time
 from datetime import timedelta
+from urllib.parse import quote
 
 from django.contrib.auth import authenticate, login, logout, password_validation
 from django.contrib.auth.models import User
-from django.http import JsonResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django.http.request import RawPostDataException
 from django.core.cache import cache
+from django.core.files.storage import default_storage
 from django.conf import settings
 from chat_app_django.ip_utils import get_client_ip_from_request
-from chat.utils import build_profile_url_from_request
+from chat.utils import (
+    build_profile_url_from_request,
+    is_valid_media_signature,
+    normalize_media_path,
+)
 from django.middleware.csrf import get_token
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -247,6 +253,41 @@ def register_view(request):
 def password_rules(request):
     """Выполняет логику `password_rules` с параметрами из сигнатуры."""
     return JsonResponse({"rules": password_validation.password_validators_help_texts()})
+
+
+@require_http_methods(["GET"])
+def media_view(request, file_path: str):
+    """Выдает media-файл по подписанному URL через X-Accel-Redirect."""
+    normalized_path = normalize_media_path(file_path)
+    if not normalized_path:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    exp_raw = request.GET.get("exp")
+    signature = request.GET.get("sig")
+    try:
+        expires_at = int(exp_raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
+    now = int(time.time())
+    if expires_at < now:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
+    if not is_valid_media_signature(normalized_path, expires_at, signature):
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
+    if not default_storage.exists(normalized_path):
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    cache_seconds = max(0, expires_at - now)
+    if settings.DEBUG:
+        response = FileResponse(default_storage.open(normalized_path, "rb"))
+    else:
+        response = HttpResponse()
+        response["X-Accel-Redirect"] = f"/_protected_media/{quote(normalized_path, safe='/')}"
+
+    response["Cache-Control"] = f"private, max-age={cache_seconds}"
+    return response
 
 
 @require_http_methods(["GET"])

@@ -724,7 +724,7 @@ button:focus {
     grid-area: nav;
     width: 100%;
     justify-content: center;
-    flex-wrap: nowrap;
+    /* flex-wrap: nowrap; */
     gap: 8px 14px;
     overflow-x: auto;
   }
@@ -732,6 +732,7 @@ button:focus {
   .topbar nav .link {
     width: auto;
     white-space: nowrap;
+    flex-wrap: wrap;
   }
 
   .topbar .nav-actions {

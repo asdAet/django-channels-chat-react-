@@ -3,6 +3,7 @@
 
 
 import uuid
+import warnings
 from pathlib import Path
 
 from django.contrib.auth.models import User
@@ -11,7 +12,9 @@ from django.db import models
 from django.utils.html import strip_tags
 from PIL import Image
 
-MAX_PROFILE_IMAGE_SIDE = 9999999
+MAX_PROFILE_IMAGE_SIDE = 4096
+MAX_PROFILE_IMAGE_PIXELS = MAX_PROFILE_IMAGE_SIDE * MAX_PROFILE_IMAGE_SIDE
+Image.MAX_IMAGE_PIXELS = MAX_PROFILE_IMAGE_PIXELS
 JPEG_EXTENSIONS = {".jpg", ".jpeg"}
 
 
@@ -58,8 +61,17 @@ class Profile(models.Model):
             default_storage.delete(old_image_name)
 
         try:
-            with Image.open(self.image.path) as img:
-                if img.height > MAX_PROFILE_IMAGE_SIDE or img.width > MAX_PROFILE_IMAGE_SIDE:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                with Image.open(self.image.path) as img:
+                    should_resize = (
+                        img.height > MAX_PROFILE_IMAGE_SIDE
+                        or img.width > MAX_PROFILE_IMAGE_SIDE
+                        or (img.width * img.height) > MAX_PROFILE_IMAGE_PIXELS
+                    )
+                    if not should_resize:
+                        self._old_image_name = self.image.name
+                        return
                     img.thumbnail((MAX_PROFILE_IMAGE_SIDE, MAX_PROFILE_IMAGE_SIDE))
 
                     ext = Path(self.image.name or "").suffix.lower()
@@ -67,7 +79,13 @@ class Profile(models.Model):
                         img = img.convert("RGB")
 
                     img.save(self.image.path)
-        except (FileNotFoundError, ValueError, OSError):
+        except (
+            FileNotFoundError,
+            ValueError,
+            OSError,
+            Image.DecompressionBombError,
+            Image.DecompressionBombWarning,
+        ):
             return
 
         self._old_image_name = self.image.name

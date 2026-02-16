@@ -3,13 +3,14 @@
 
 
 import json
+from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.db import OperationalError
 from django.test import Client, RequestFactory, SimpleTestCase, TestCase, override_settings
 
-from chat import api
+from chat import api, utils
 from chat.models import ChatRole, Message, Room
 
 User = get_user_model()
@@ -43,12 +44,39 @@ class ChatApiHelpersTests(SimpleTestCase):
         """Проверяет сценарий `test_build_profile_pic_url_falls_back_to_string_value`."""
         request = self.factory.get('/api/chat/public-room/')
         url = api._build_profile_pic_url(request, _BrokenProfileValue())
-        self.assertEqual(url, 'https://example.com/media/profile_pics/fallback.jpg')
+        parsed = urlparse(url)
+        self.assertEqual(f"{parsed.scheme}://{parsed.netloc}", "https://example.com")
+        self.assertEqual(parsed.path, "/api/auth/media/profile_pics/fallback.jpg")
+        query = parse_qs(parsed.query)
+        self.assertIn("exp", query)
+        self.assertIn("sig", query)
+        self.assertTrue(
+            utils.is_valid_media_signature(
+                "profile_pics/fallback.jpg",
+                int(query["exp"][0]),
+                query["sig"][0],
+            )
+        )
 
     @override_settings(CHAT_ROOM_SLUG_REGEX='[')
     def test_is_valid_room_slug_handles_invalid_regex(self):
         """Проверяет сценарий `test_is_valid_room_slug_handles_invalid_regex`."""
         self.assertFalse(api._is_valid_room_slug('room-name'))
+
+    @override_settings(CHAT_DIRECT_SLUG_SALT='salt-one')
+    def test_direct_room_slug_is_deterministic_for_same_salt(self):
+        """Проверяет детерминированность slug для одной пары и одного salt."""
+        first = api._direct_room_slug('1:2')
+        second = api._direct_room_slug('1:2')
+        self.assertEqual(first, second)
+
+    def test_direct_room_slug_changes_when_salt_changes(self):
+        """Проверяет, что slug зависит от секретного salt."""
+        with override_settings(CHAT_DIRECT_SLUG_SALT='salt-a'):
+            first = api._direct_room_slug('1:2')
+        with override_settings(CHAT_DIRECT_SLUG_SALT='salt-b'):
+            second = api._direct_room_slug('1:2')
+        self.assertNotEqual(first, second)
 
     def test_parse_positive_int_raises_for_invalid_value(self):
         """Проверяет сценарий `test_parse_positive_int_raises_for_invalid_value`."""

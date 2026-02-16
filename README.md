@@ -90,6 +90,7 @@ Jobs:
 - `GET /api/auth/password-rules/`
 - `GET/POST /api/auth/profile/`
 - `GET /api/auth/users/<username>/`
+- `GET /api/auth/media/<path:file_path>?exp=<unix>&sig=<hex>`
 - `GET /api/chat/public-room/`
 - `POST /api/chat/direct/start/`
 - `GET /api/chat/direct/chats/`
@@ -107,3 +108,12 @@ docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 Перед запуском подготовьте `.env` на основе `example.env`.
+
+Критичные security-переменные для production:
+- `DJANGO_DEBUG=0`
+- `DJANGO_RELAX_PASSWORDS=0`
+- `DJANGO_MEDIA_URL_TTL_SECONDS=300`
+- `DJANGO_MEDIA_SIGNING_KEY` (если пусто, используется `DJANGO_SECRET_KEY`)
+- `CHAT_DIRECT_SLUG_SALT` (если пусто, используется `DJANGO_SECRET_KEY`)
+- `WS_CONNECT_RATE_LIMIT=60`
+- `WS_CONNECT_RATE_WINDOW=60`

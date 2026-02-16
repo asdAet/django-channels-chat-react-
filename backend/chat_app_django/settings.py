@@ -30,6 +30,21 @@ def env_list(name: str, default: list[str]) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def env_int(name: str, default: int, minimum: int | None = None) -> int:
+    """Преобразует значение переменной окружения в целое число."""
+    raw = os.getenv(name)
+    if raw is None:
+        value = default
+    else:
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise ImproperlyConfigured(f"{name} must be an integer.") from exc
+    if minimum is not None and value < minimum:
+        raise ImproperlyConfigured(f"{name} must be >= {minimum}.")
+    return value
+
+
 DEBUG = env_bool("DJANGO_DEBUG", True)
 TESTING = "test" in sys.argv
 
@@ -172,7 +187,11 @@ if (
     raise ImproperlyConfigured("SQLite is not allowed in production.")
 
 
-if env_bool("DJANGO_RELAX_PASSWORDS", DEBUG):
+RELAX_PASSWORDS = env_bool("DJANGO_RELAX_PASSWORDS", DEBUG)
+if not DEBUG and RELAX_PASSWORDS:
+    raise ImproperlyConfigured("DJANGO_RELAX_PASSWORDS cannot be enabled in production.")
+
+if RELAX_PASSWORDS:
     AUTH_PASSWORD_VALIDATORS = [
         {
             "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
@@ -222,6 +241,8 @@ CORS_ALLOWED_ORIGINS = env_list(
 CORS_ALLOW_CREDENTIALS = env_bool("DJANGO_CORS_ALLOW_CREDENTIALS", True)
 CORS_URLS_REGEX = r"^/api/.*$"
 PUBLIC_BASE_URL = os.getenv("DJANGO_PUBLIC_BASE_URL", "").strip() or None
+MEDIA_URL_TTL_SECONDS = env_int("DJANGO_MEDIA_URL_TTL_SECONDS", 300, minimum=1)
+MEDIA_SIGNING_KEY = os.getenv("DJANGO_MEDIA_SIGNING_KEY", "").strip() or SECRET_KEY
 TRUSTED_PROXY_IPS = env_list("DJANGO_TRUSTED_PROXY_IPS", [])
 TRUSTED_PROXY_RANGES = env_list(
     "DJANGO_TRUSTED_PROXY_RANGES",
@@ -254,6 +275,9 @@ CHAT_MESSAGES_PAGE_SIZE = int(os.getenv("CHAT_MESSAGES_PAGE_SIZE", "50"))
 CHAT_MESSAGES_MAX_PAGE_SIZE = int(os.getenv("CHAT_MESSAGES_MAX_PAGE_SIZE", "200"))
 CHAT_WS_IDLE_TIMEOUT = int(os.getenv("CHAT_WS_IDLE_TIMEOUT", "600"))
 CHAT_ROOM_SLUG_REGEX = os.getenv("CHAT_ROOM_SLUG_REGEX", r"^[A-Za-z0-9_-]{3,50}$")
+CHAT_DIRECT_SLUG_SALT = os.getenv("CHAT_DIRECT_SLUG_SALT", "").strip() or SECRET_KEY
+WS_CONNECT_RATE_LIMIT = env_int("WS_CONNECT_RATE_LIMIT", 60, minimum=1)
+WS_CONNECT_RATE_WINDOW = env_int("WS_CONNECT_RATE_WINDOW", 60, minimum=1)
 PRESENCE_TTL = int(os.getenv("PRESENCE_TTL", "40"))
 PRESENCE_GRACE = int(os.getenv("PRESENCE_GRACE", "5"))
 PRESENCE_HEARTBEAT = int(os.getenv("PRESENCE_HEARTBEAT", "20"))

@@ -2,12 +2,15 @@
 """Содержит логику модуля `forms` подсистемы `users`."""
 
 
+import warnings
+
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 from django.utils.html import strip_tags
+from PIL import Image
 
-from .models import Profile
+from .models import MAX_PROFILE_IMAGE_PIXELS, MAX_PROFILE_IMAGE_SIDE, Profile
 
 
 USERNAME_MAX_LENGTH = 13
@@ -86,3 +89,35 @@ class ProfileUpdateForm(forms.ModelForm):
         """Выполняет логику `clean_bio` с параметрами из сигнатуры."""
         bio = self.cleaned_data.get("bio") or ""
         return strip_tags(bio).strip()
+
+    def clean_image(self):
+        """Проверяет формат и размеры аватара до сохранения."""
+        image = self.cleaned_data.get("image")
+        if not image:
+            return image
+
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                with Image.open(image) as uploaded:
+                    width, height = uploaded.size
+                    if width > MAX_PROFILE_IMAGE_SIDE or height > MAX_PROFILE_IMAGE_SIDE:
+                        raise forms.ValidationError(
+                            f"Максимальный размер аватара: {MAX_PROFILE_IMAGE_SIDE}x{MAX_PROFILE_IMAGE_SIDE}."
+                        )
+                    if (width * height) > MAX_PROFILE_IMAGE_PIXELS:
+                        raise forms.ValidationError(
+                            f"Максимум {MAX_PROFILE_IMAGE_PIXELS} пикселей."
+                        )
+                    uploaded.verify()
+        except forms.ValidationError:
+            raise
+        except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+            raise forms.ValidationError("Изображение слишком большое.")
+        except (OSError, ValueError, Image.UnidentifiedImageError):
+            raise forms.ValidationError("Некорректный формат изображения.")
+        finally:
+            if hasattr(image, "seek"):
+                image.seek(0)
+
+        return image

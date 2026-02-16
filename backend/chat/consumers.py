@@ -55,6 +55,24 @@ def _is_valid_room_slug(value: str) -> bool:
         return False
 
 
+def _ws_connect_rate_limited(scope, endpoint: str) -> bool:
+    """Проверяет лимит подключений WebSocket для endpoint и IP-адреса."""
+    limit = int(getattr(settings, "WS_CONNECT_RATE_LIMIT", 60))
+    window = int(getattr(settings, "WS_CONNECT_RATE_WINDOW", 60))
+    ip = get_client_ip_from_scope(scope) or "unknown"
+    key = f"rl:ws:connect:{endpoint}:{ip}"
+    now = time.time()
+    data = cache.get(key)
+    if not data or data.get("reset", 0) <= now:
+        cache.set(key, {"count": 1, "reset": now + window}, timeout=window)
+        return False
+    if data.get("count", 0) >= limit:
+        return True
+    data["count"] = data.get("count", 0) + 1
+    cache.set(key, data, timeout=max(1, int(data["reset"] - now)))
+    return False
+
+
 class ChatConsumer(AsyncWebsocketConsumer):
     """Инкапсулирует логику класса `ChatConsumer`."""
     chat_idle_timeout = int(getattr(settings, "CHAT_WS_IDLE_TIMEOUT", 600))
@@ -64,6 +82,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Выполняет логику `connect` с параметрами из сигнатуры."""
         user = self.scope["user"]
         room_slug = self.scope["url_route"]["kwargs"]["room_name"]
+
+        if await sync_to_async(_ws_connect_rate_limited)(self.scope, "chat"):
+            await self.close(code=4429)
+            return
 
         if room_slug != PUBLIC_ROOM_SLUG and not _is_valid_room_slug(room_slug):
             await self.close(code=4404)
@@ -368,6 +390,10 @@ class DirectInboxConsumer(AsyncWebsocketConsumer):
             await self.close(code=4401)
             return
 
+        if await sync_to_async(_ws_connect_rate_limited)(self.scope, "direct_inbox"):
+            await self.close(code=4429)
+            return
+
         self.user = user
         self.conn_id = uuid.uuid4().hex
         self.group_name = user_group_name(user.id)
@@ -572,6 +598,10 @@ class PresenceConsumer(AsyncWebsocketConsumer):
         self.is_guest = not user or not user.is_authenticated
         self.group_name = self.group_name_guest if self.is_guest else self.group_name_auth
         self.guest_ip = self._get_client_ip() if self.is_guest else None
+
+        if await sync_to_async(_ws_connect_rate_limited)(self.scope, "presence"):
+            await self.close(code=4429)
+            return
 
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()

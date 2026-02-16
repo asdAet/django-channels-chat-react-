@@ -9,7 +9,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
-from users.models import Profile
+from users.models import MAX_PROFILE_IMAGE_SIDE, Profile
 
 User = get_user_model()
 
@@ -85,6 +85,18 @@ class ProfileImageProcessingTests(TestCase):
 
         self.assertNotEqual(first_name, second_name)
 
+    def test_large_avatar_is_resized_to_safe_limit(self):
+        """Понижает размер изображения при сохранении профиля вне формы."""
+        user = User.objects.create_user(username="resize_user", password="pass12345")
+        profile = user.profile
+        profile.image = self._png_upload((MAX_PROFILE_IMAGE_SIDE + 500, 800))
+        profile.save()
+        profile.refresh_from_db()
+
+        with Image.open(profile.image.path) as saved:
+            self.assertLessEqual(saved.width, MAX_PROFILE_IMAGE_SIDE)
+            self.assertLessEqual(saved.height, MAX_PROFILE_IMAGE_SIDE)
+
     @staticmethod
     def _png_bytes(color) -> bytes:
         """Проверяет сценарий `_png_bytes`."""
@@ -92,3 +104,12 @@ class ProfileImageProcessingTests(TestCase):
         buff = io.BytesIO()
         image.save(buff, format='PNG')
         return buff.getvalue()
+
+    @staticmethod
+    def _png_upload(size) -> SimpleUploadedFile:
+        """Создает PNG-файл заданного размера для загрузки в модель."""
+        image = Image.new("RGB", size, (128, 64, 32))
+        buff = io.BytesIO()
+        image.save(buff, format="PNG")
+        buff.seek(0)
+        return SimpleUploadedFile("large.png", buff.read(), content_type="image/png")

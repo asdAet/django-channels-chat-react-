@@ -14,10 +14,36 @@ from django.core.cache import cache
 from django.test import TestCase, override_settings
 
 from chat.constants import CHAT_CLOSE_IDLE_CODE, PRESENCE_CLOSE_IDLE_CODE
-from chat.consumers import ChatConsumer, DirectInboxConsumer, PresenceConsumer, _is_valid_room_slug
+from chat.consumers import (
+    ChatConsumer,
+    DirectInboxConsumer,
+    PresenceConsumer,
+    _is_valid_room_slug,
+    _ws_connect_rate_limited,
+)
 from chat.models import ChatRole, Room
 
 User = get_user_model()
+
+
+class WsConnectRateLimitTests(TestCase):
+    """Проверяет helper лимита подключений WebSocket по IP."""
+
+    def setUp(self):
+        """Очищает кэш перед каждым сценарием."""
+        cache.clear()
+
+    @override_settings(WS_CONNECT_RATE_LIMIT=2, WS_CONNECT_RATE_WINDOW=60)
+    def test_ws_connect_rate_limit_counts_and_resets(self):
+        """Ограничивает частые connect-запросы и сбрасывает окно по reset."""
+        scope = {"client": ("127.0.0.1", 50500), "headers": []}
+        self.assertFalse(_ws_connect_rate_limited(scope, "chat"))
+        self.assertFalse(_ws_connect_rate_limited(scope, "chat"))
+        self.assertTrue(_ws_connect_rate_limited(scope, "chat"))
+
+        key = "rl:ws:connect:chat:127.0.0.1"
+        cache.set(key, {"count": 9, "reset": time.time() - 1}, timeout=60)
+        self.assertFalse(_ws_connect_rate_limited(scope, "chat"))
 
 
 class ChatConsumerInternalTests(TestCase):
@@ -431,6 +457,17 @@ class PresenceConsumerInternalTests(TestCase):
         auth_consumer._add_guest.assert_not_awaited()
         auth_consumer._add_user.assert_awaited_once_with(self.user)
 
+    def test_connect_closes_when_rate_limited(self):
+        """Закрывает соединение Presence при превышении connect-rate-limit."""
+        consumer = self._consumer()
+        consumer.accept = AsyncMock()
+
+        with patch("chat.consumers._ws_connect_rate_limited", return_value=True):
+            async_to_sync(consumer.connect)()
+
+        consumer.close.assert_awaited_once_with(code=4429)
+        consumer.accept.assert_not_awaited()
+
 
 class ChatConsumerDirectInboxTargetsTests(TestCase):
     """Группирует тестовые сценарии класса `ChatConsumerDirectInboxTargetsTests`."""
@@ -610,3 +647,15 @@ class DirectInboxConsumerInternalTests(TestCase):
             async_to_sync(idle_consumer._idle_watchdog)()
 
         idle_consumer.close.assert_awaited_once()
+
+    def test_connect_closes_when_rate_limited(self):
+        """Закрывает direct inbox websocket при превышении лимита connect."""
+        consumer = self._consumer()
+        consumer.accept = AsyncMock()
+        consumer._send_unread_state = AsyncMock()
+
+        with patch("chat.consumers._ws_connect_rate_limited", return_value=True):
+            async_to_sync(consumer.connect)()
+
+        consumer.close.assert_awaited_once_with(code=4429)
+        consumer.accept.assert_not_awaited()

@@ -3,6 +3,7 @@
 
 
 import hashlib
+import hmac
 import json
 import re
 import time
@@ -87,7 +88,12 @@ def _direct_pair_key(user_a_id: int, user_b_id: int) -> str:
 
 def _direct_room_slug(pair_key: str) -> str:
     """Выполняет логику `_direct_room_slug` с параметрами из сигнатуры."""
-    digest = hashlib.sha256(pair_key.encode("utf-8")).hexdigest()[:24]
+    salt = str(getattr(settings, "CHAT_DIRECT_SLUG_SALT", "") or settings.SECRET_KEY)
+    digest = hmac.new(
+        salt.encode("utf-8"),
+        pair_key.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:24]
     return f"dm_{digest}"
 
 

@@ -92,6 +92,22 @@ class ChatConsumerTests(TransactionTestCase):
 
         async_to_sync(run)()
 
+    @override_settings(WS_CONNECT_RATE_LIMIT=1, WS_CONNECT_RATE_WINDOW=60)
+    def test_chat_connect_rate_limit(self):
+        """Отклоняет второе подключение с того же IP при жестком лимите."""
+        async def run():
+            """Проверяет сценарий `run`."""
+            first, connected, _ = await self._connect('/ws/chat/public/')
+            self.assertTrue(connected)
+
+            _second, second_connected, close_code = await self._connect('/ws/chat/public/')
+            self.assertFalse(second_connected)
+            self.assertEqual(close_code, 4429)
+
+            await first.disconnect()
+
+        async_to_sync(run)()
+
     def test_invalid_room_rejected(self):
         """Проверяет сценарий `test_invalid_room_rejected`."""
         async def run():

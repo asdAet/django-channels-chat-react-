@@ -1,8 +1,11 @@
 """Содержит утилиты для построения корректных публичных URL медиа."""
 
+import hashlib
+import hmac
 import posixpath
+import time
 from ipaddress import ip_address
-from urllib.parse import urlparse
+from urllib.parse import quote, urlencode, urlparse
 
 from django.conf import settings
 
@@ -181,19 +184,39 @@ def _coerce_media_source(image_name: str | None) -> str | None:
     return raw
 
 
-def _media_url_path(image_name: str | None) -> str | None:
-    """Строит URL-путь до медиа-файла на основе MEDIA_URL."""
+def _media_signing_key() -> bytes:
+    """Возвращает ключ для подписи media URL."""
+    key = getattr(settings, "MEDIA_SIGNING_KEY", None) or getattr(settings, "SECRET_KEY", "")
+    return str(key).encode("utf-8")
+
+
+def _media_signature(path: str, expires_at: int) -> str:
+    """Строит HMAC-подпись для пути медиа-файла и времени истечения."""
+    payload = f"{path}:{expires_at}".encode("utf-8")
+    return hmac.new(_media_signing_key(), payload, hashlib.sha256).hexdigest()
+
+
+def is_valid_media_signature(path: str, expires_at: int, signature: str | None) -> bool:
+    """Проверяет валидность подписи для подписанного media URL."""
+    normalized = normalize_media_path(path)
+    if not normalized or not signature:
+        return False
+    expected = _media_signature(normalized, expires_at)
+    return hmac.compare_digest(expected, str(signature))
+
+
+def _signed_media_url_path(image_name: str | None, expires_at: int | None = None) -> str | None:
+    """Строит подписанный URL-путь до медиа endpoint."""
     normalized = normalize_media_path(image_name)
     if not normalized:
         return None
 
-    media_url = settings.MEDIA_URL or "/media/"
-    if not media_url.startswith("/"):
-        media_url = f"/{media_url}"
-    if not media_url.endswith("/"):
-        media_url = f"{media_url}/"
-
-    return f"{media_url}{normalized}"
+    ttl_seconds = int(getattr(settings, "MEDIA_URL_TTL_SECONDS", 300))
+    expiry = int(expires_at) if expires_at is not None else int(time.time()) + ttl_seconds
+    signature = _media_signature(normalized, expiry)
+    encoded_path = quote(normalized, safe="/")
+    query = urlencode({"exp": expiry, "sig": signature})
+    return f"/api/auth/media/{encoded_path}?{query}"
 
 
 def build_profile_url_from_request(request, image_name: str | None) -> str | None:
@@ -205,7 +228,7 @@ def build_profile_url_from_request(request, image_name: str | None) -> str | Non
     if source.startswith("http://") or source.startswith("https://"):
         return source
 
-    path = _media_url_path(source)
+    path = _signed_media_url_path(source)
     if not path:
         return None
 
@@ -241,7 +264,7 @@ def build_profile_url(scope, image_name: str | None) -> str | None:
     if source.startswith("http://") or source.startswith("https://"):
         return source
 
-    path = _media_url_path(source)
+    path = _signed_media_url_path(source)
     if not path:
         return None
 
