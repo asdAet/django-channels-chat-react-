@@ -1,0 +1,58 @@
+.avatar {
+  width: 56px;
+  height: 56px;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  color: #0a1020;
+  font-weight: 800;
+  text-transform: uppercase;
+  flex: 0 0 auto;
+}
+
+.default {
+  width: 56px;
+  height: 56px;
+}
+
+.small {
+  width: 45px;
+  height: 45px;
+}
+
+.tiny {
+  width: 45px;
+  height: 45px;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  border-radius: 50%;
+}
+
+.online::after {
+  content: "";
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #3aa8ff;
+  border: 2px solid #0e1628;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.small.online::after,
+.tiny.online::after {
+  width: 9px;
+  height: 9px;
+}
+

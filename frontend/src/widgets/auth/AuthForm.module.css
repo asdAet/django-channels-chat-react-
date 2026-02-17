@@ -1,0 +1,81 @@
+.auth {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.card {
+  width: 100%;
+  max-width: 720px;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: #9ab1d0;
+  font-size: 12px;
+  margin: 0;
+}
+
+.title {
+  margin: 6px 0 10px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #dce5f5;
+}
+
+.field input {
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--color-text);
+}
+
+.passwordRules {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ticks {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.ticks li::before {
+  content: "\2022";
+  margin-right: 8px;
+  color: #8ae6ff;
+}
+
+.note {
+  color: #b7c2d6;
+  font-size: 14px;
+  margin: 4px 0 0;
+}
+
+.authSwitch {
+  margin-top: 12px;
+  color: #b7c2d6;
+}
+
+.switchButton {
+  color: #8ae6ff;
+  padding: 0;
+}
+

@@ -46,11 +46,6 @@ const user = {
 }
 
 describe('DirectChatsPage', () => {
-  /**
-   * Выполняет метод `beforeEach`.
-   * @returns Результат выполнения `beforeEach`.
-   */
-
   beforeEach(() => {
     inboxMock.items = []
     inboxMock.loading = false
@@ -63,69 +58,23 @@ describe('DirectChatsPage', () => {
     presenceMock.lastError = null
   })
 
-  /**
-   * Выполняет метод `it`.
-   * @returns Результат выполнения `it`.
-   */
-
   it('shows auth prompt for guests', () => {
     const onNavigate = vi.fn()
-    /**
-     * Выполняет метод `render`.
-     * @returns Результат выполнения `render`.
-     */
-
     render(<DirectChatsPage user={null} onNavigate={onNavigate} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Войти' }))
-    /**
-     * Выполняет метод `expect`.
-     * @param onNavigate Входной параметр `onNavigate`.
-     * @returns Результат выполнения `expect`.
-     */
-
     expect(onNavigate).toHaveBeenCalledWith('/login')
   })
 
-  /**
-   * Выполняет метод `it`.
-   * @returns Результат выполнения `it`.
-   */
-
   it('shows empty state', () => {
-    /**
-     * Выполняет метод `render`.
-     * @returns Результат выполнения `render`.
-     */
-
     render(<DirectChatsPage user={user} onNavigate={vi.fn()} />)
 
-    /**
-     * Выполняет метод `expect`.
-     * @returns Результат выполнения `expect`.
-     */
-
     expect(screen.getByText('Пока нет личных сообщений')).toBeInTheDocument()
-    /**
-     * Выполняет метод `expect`.
-     * @returns Результат выполнения `expect`.
-     */
-
     expect(inboxMock.refresh).toHaveBeenCalledTimes(1)
-    /**
-     * Выполняет метод `expect`.
-     * @returns Результат выполнения `expect`.
-     */
-
     expect(inboxMock.setActiveRoom).toHaveBeenCalledWith(null)
   })
 
-  /**
-   * Выполняет метод `it`.
-   * @returns Результат выполнения `it`.
-   */
-
-  it('navigates to direct chat item', () => {
+  it('navigates to direct chat item and shows unread count', () => {
     const onNavigate = vi.fn()
     inboxMock.items = [
       {
@@ -138,36 +87,14 @@ describe('DirectChatsPage', () => {
     inboxMock.unreadCounts = { dm_123: 2 }
     presenceMock.online = [{ username: 'alice', profileImage: null }]
 
-    /**
-     * Выполняет метод `render`.
-     * @returns Результат выполнения `render`.
-     */
-
     const { container } = render(<DirectChatsPage user={user} onNavigate={onNavigate} />)
 
-    const button = screen.getByRole('button', { name: /alice/i })
-    fireEvent.click(button)
-
-    /**
-     * Выполняет метод `expect`.
-     * @param onNavigate Входной параметр `onNavigate`.
-     * @returns Результат выполнения `expect`.
-     */
+    fireEvent.click(screen.getByRole('button', { name: /alice/i }))
 
     expect(onNavigate).toHaveBeenCalledWith('/direct/@alice')
-    /**
-     * Выполняет метод `expect`.
-     * @returns Результат выполнения `expect`.
-     */
-
     expect(screen.getByText('2')).toBeInTheDocument()
-    expect(container.querySelector('.direct-chat-item .avatar.is-online')).not.toBeNull()
+    expect(container.querySelector('[data-size="tiny"][data-online="true"]')).not.toBeNull()
   })
-
-  /**
-   * Выполняет метод `it`.
-   * @returns Результат выполнения `it`.
-   */
 
   it('does not show online badge for offline peer', () => {
     inboxMock.items = [
@@ -182,6 +109,7 @@ describe('DirectChatsPage', () => {
 
     const { container } = render(<DirectChatsPage user={user} onNavigate={vi.fn()} />)
 
-    expect(container.querySelector('.direct-chat-item .avatar.is-online')).toBeNull()
+    expect(container.querySelector('[data-size="tiny"][data-online="true"]')).toBeNull()
   })
 })
+

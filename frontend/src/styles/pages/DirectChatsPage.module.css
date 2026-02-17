@@ -1,0 +1,144 @@
+.actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.directInbox {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: #9ab1d0;
+  font-size: 12px;
+  margin: 0;
+}
+
+.title {
+  margin: 0;
+}
+
+.muted {
+  color: var(--color-muted);
+}
+
+.directChatList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.directChatItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: 1px solid rgba(124, 146, 255, 0.25);
+  background: rgba(22, 30, 54, 0.7);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: inherit;
+  text-align: left;
+}
+
+.directChatItem:hover,
+.directChatItem:focus-visible {
+  border-color: rgba(124, 146, 255, 0.45);
+  background: rgba(28, 38, 68, 0.85);
+}
+
+.itemBody {
+  min-width: 0;
+  flex: 1;
+}
+
+.itemHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.itemName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.time {
+  color: var(--color-muted);
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.2;
+  border-radius: 999px;
+  background: rgba(138, 230, 255, 0.18);
+  color: #d8f6ff;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.preview {
+  margin: 4px 0 0;
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active {
+  border-color: rgba(138, 230, 255, 0.65);
+  box-shadow: 0 0 0 1px rgba(138, 230, 255, 0.25);
+}
+
+@media (max-width: 881px) {
+  .directInbox {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  .directChatList {
+    max-height: none;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 16px;
+    padding: 14px;
+  }
+
+  .muted {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 16px;
+    padding: 14px;
+  }
+}

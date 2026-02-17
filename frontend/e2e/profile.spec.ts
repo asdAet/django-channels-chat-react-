@@ -28,7 +28,7 @@ test('profile update works with validation and save', async ({ page }) => {
   const bioField = page.locator('textarea').first()
   await expect(bioField).toBeVisible()
   await bioField.fill(nextBio)
-  await page.locator('.actions .btn.primary[type="submit"]').click()
+  await page.getByTestId('profile-save-button').click()
 
   await expect(page).toHaveURL(`/users/${encodeURIComponent(username)}`)
   await expect(page.getByText(nextBio)).toBeVisible()

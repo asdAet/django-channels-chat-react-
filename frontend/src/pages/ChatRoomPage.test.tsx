@@ -1,4 +1,4 @@
-﻿import { act, fireEvent, render } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Message } from '../entities/message/types'
@@ -69,11 +69,6 @@ const user = {
 }
 
 describe('ChatRoomPage', () => {
-  /**
-   * Выполняет метод `beforeEach`.
-   * @returns Результат выполнения `beforeEach`.
-   */
-
   beforeEach(() => {
     wsState.status = 'online'
     wsState.lastError = null
@@ -93,117 +88,43 @@ describe('ChatRoomPage', () => {
     presenceMock.lastError = null
   })
 
-  /**
-   * Выполняет метод `it`.
-   * @returns Результат выполнения `it`.
-   */
-
   it('shows read-only mode for guest in public room', () => {
-    const { container } = render(
-      <ChatRoomPage slug="public" user={null} onNavigate={vi.fn()} />,
-    )
+    render(<ChatRoomPage slug="public" user={null} onNavigate={vi.fn()} />)
 
-    /**
-     * Выполняет метод `expect`.
-     * @returns Результат выполнения `expect`.
-     */
-
-    expect(container.querySelector('.auth-callout')).toBeTruthy()
-    /**
-     * Выполняет метод `expect`.
-     * @returns Результат выполнения `expect`.
-     */
-
-    expect(container.querySelector('.chat-input input')).toBeNull()
+    expect(
+      screen.getByText('Чтобы писать в публичном чате, войдите или зарегистрируйтесь.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText('Сообщение')).toBeNull()
   })
 
-  /**
-   * Выполняет метод `it`.
-   * @returns Результат выполнения `it`.
-   */
-
   it('sends message for authenticated user', () => {
-    const { container } = render(
-      <ChatRoomPage slug="public" user={user} onNavigate={vi.fn()} />,
-    )
+    render(<ChatRoomPage slug="public" user={user} onNavigate={vi.fn()} />)
 
-    const input = container.querySelector('.chat-input input') as HTMLInputElement
-    const submit = container.querySelector('.chat-input button') as HTMLButtonElement
-
-    fireEvent.change(input, { target: { value: 'Hello from test' } })
-    fireEvent.click(submit)
-
-    /**
-     * Выполняет метод `expect`.
-     * @returns Результат выполнения `expect`.
-     */
+    fireEvent.change(screen.getByLabelText('Сообщение'), {
+      target: { value: 'Hello from test' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Отправить сообщение' }))
 
     expect(wsState.send).toHaveBeenCalledTimes(1)
     const payload = JSON.parse(wsState.send.mock.calls[0][0])
-    /**
-     * Выполняет метод `expect`.
-     * @returns Результат выполнения `expect`.
-     */
-
     expect(payload.message).toBe('Hello from test')
-    /**
-     * Выполняет метод `expect`.
-     * @returns Результат выполнения `expect`.
-     */
-
     expect(payload.username).toBe('demo')
   })
-
-  /**
-   * Выполняет метод `it`.
-   * @returns Результат выполнения `it`.
-   */
 
   it('disables submit while websocket is not online', () => {
     wsState.status = 'connecting'
 
-    const { container } = render(
-      <ChatRoomPage slug="public" user={user} onNavigate={vi.fn()} />,
-    )
+    render(<ChatRoomPage slug="public" user={user} onNavigate={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Сообщение'), { target: { value: 'text' } })
 
-    const input = container.querySelector('.chat-input input') as HTMLInputElement
-    const submit = container.querySelector('.chat-input button') as HTMLButtonElement
-
-    fireEvent.change(input, { target: { value: 'text' } })
-
-    /**
-     * Выполняет метод `expect`.
-     * @returns Результат выполнения `expect`.
-     */
-
-    expect(submit.disabled).toBe(true)
+    expect(screen.getByRole('button', { name: 'Отправить сообщение' })).toBeDisabled()
   })
 
-  /**
-   * Выполняет метод `it`.
-   * @returns Результат выполнения `it`.
-   */
-
   it('activates local rate limit cooldown from ws error event', () => {
-    const { container } = render(
-      <ChatRoomPage slug="public" user={user} onNavigate={vi.fn()} />,
-    )
+    render(<ChatRoomPage slug="public" user={user} onNavigate={vi.fn()} />)
 
-    const input = container.querySelector('.chat-input input') as HTMLInputElement
-    const submit = container.querySelector('.chat-input button') as HTMLButtonElement
-
-    fireEvent.change(input, { target: { value: 'text' } })
-    /**
-     * Выполняет метод `expect`.
-     * @returns Результат выполнения `expect`.
-     */
-
-    expect(submit.disabled).toBe(false)
-
-    /**
-     * Выполняет метод `act`.
-     * @returns Результат выполнения `act`.
-     */
+    fireEvent.change(screen.getByLabelText('Сообщение'), { target: { value: 'text' } })
+    expect(screen.getByRole('button', { name: 'Отправить сообщение' })).toBeEnabled()
 
     act(() => {
       wsState.options?.onMessage?.(
@@ -213,18 +134,8 @@ describe('ChatRoomPage', () => {
       )
     })
 
-    /**
-     * Выполняет метод `expect`.
-     * @returns Результат выполнения `expect`.
-     */
-
-    expect(submit.disabled).toBe(true)
+    expect(screen.getByRole('button', { name: 'Отправить сообщение' })).toBeDisabled()
   })
-
-  /**
-   * Выполняет метод `it`.
-   * @returns Результат выполнения `it`.
-   */
 
   it('shows online status for direct peer', () => {
     chatRoomMock.details = {
@@ -237,22 +148,9 @@ describe('ChatRoomPage', () => {
     } as RoomDetails
     presenceMock.online = [{ username: 'alice', profileImage: null }]
 
-    const { container } = render(
-      <ChatRoomPage slug="dm_1" user={user} onNavigate={vi.fn()} />,
-    )
-
-    /**
-     * Выполняет метод `expect`.
-     * @returns Результат выполнения `expect`.
-     */
-
-    expect(container.textContent).toContain('В сети')
+    render(<ChatRoomPage slug="dm_1" user={user} onNavigate={vi.fn()} />)
+    expect(screen.getByText('В сети')).toBeInTheDocument()
   })
-
-  /**
-   * Выполняет метод `it`.
-   * @returns Результат выполнения `it`.
-   */
 
   it('shows last seen for offline direct peer', () => {
     chatRoomMock.details = {
@@ -265,22 +163,9 @@ describe('ChatRoomPage', () => {
     } as RoomDetails
     presenceMock.online = []
 
-    const { container } = render(
-      <ChatRoomPage slug="dm_2" user={user} onNavigate={vi.fn()} />,
-    )
-
-    /**
-     * Выполняет метод `expect`.
-     * @returns Результат выполнения `expect`.
-     */
-
-    expect(container.textContent).toContain('Последний раз в сети:')
+    render(<ChatRoomPage slug="dm_2" user={user} onNavigate={vi.fn()} />)
+    expect(screen.getByText(/Последний раз в сети:/i)).toBeInTheDocument()
   })
-
-  /**
-   * Выполняет метод `it`.
-   * @returns Результат выполнения `it`.
-   */
 
   it('shows online badge on message avatar for online user', () => {
     chatRoomMock.messages = [
@@ -294,17 +179,9 @@ describe('ChatRoomPage', () => {
     ]
     presenceMock.online = [{ username: 'alice', profileImage: null }]
 
-    const { container } = render(
-      <ChatRoomPage slug="public" user={user} onNavigate={vi.fn()} />,
-    )
-
-    expect(container.querySelector('.message .avatar.small.is-online')).not.toBeNull()
+    const { container } = render(<ChatRoomPage slug="public" user={user} onNavigate={vi.fn()} />)
+    expect(container.querySelector('[data-size="small"][data-online="true"]')).not.toBeNull()
   })
-
-  /**
-   * Выполняет метод `it`.
-   * @returns Результат выполнения `it`.
-   */
 
   it('does not show online badge on message avatar for offline user', () => {
     chatRoomMock.messages = [
@@ -318,10 +195,8 @@ describe('ChatRoomPage', () => {
     ]
     presenceMock.online = []
 
-    const { container } = render(
-      <ChatRoomPage slug="public" user={user} onNavigate={vi.fn()} />,
-    )
-
-    expect(container.querySelector('.message .avatar.small.is-online')).toBeNull()
+    const { container } = render(<ChatRoomPage slug="public" user={user} onNavigate={vi.fn()} />)
+    expect(container.querySelector('[data-size="small"][data-online="true"]')).toBeNull()
   })
 })
+

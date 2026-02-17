@@ -1,8 +1,11 @@
-﻿import type { FormEvent } from 'react'
+import type { FormEvent } from 'react'
 import { useState } from 'react'
-import { USERNAME_MAX_LENGTH } from '../shared/config/limits'
 
-type Props = {
+import { USERNAME_MAX_LENGTH } from '../../shared/config/limits'
+import { Button, Card, Toast } from '../../shared/ui'
+import styles from './AuthForm.module.css'
+
+type AuthFormProps = {
   title: string
   submitLabel: string
   onSubmit: (username: string, password: string, confirm?: string) => void
@@ -10,15 +13,15 @@ type Props = {
   requireConfirm?: boolean
   error?: string | null
   passwordRules?: string[]
+  className?: string
 }
 
 /**
- * Рендерит компонент `AuthPage` и связанную разметку.
- * @param props Входной параметр `props`.
- * @returns Результат выполнения `AuthPage`.
+ * Универсальная форма аутентификации для входа и регистрации.
+ * @param props Параметры формы и обработчики действий.
+ * @returns JSX-разметка формы аутентификации.
  */
-
-export function AuthPage({
+export function AuthForm({
   title,
   submitLabel,
   onSubmit,
@@ -26,7 +29,8 @@ export function AuthPage({
   requireConfirm = false,
   error = null,
   passwordRules = [],
-}: Props) {
+  className,
+}: AuthFormProps) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -34,28 +38,21 @@ export function AuthPage({
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
     if (!username.trim() || !password) return
-    /**
-     * Выполняет метод `onSubmit`.
-     * @param password Входной параметр `password`.
-     * @param confirm Входной параметр `confirm`.
-     * @returns Результат выполнения `onSubmit`.
-     */
-
     onSubmit(username.trim(), password, confirm)
   }
 
   return (
-    <div className="auth">
-      <div className="card wide">
-        <p className="eyebrow">{title}</p>
-        <h2 className="mb-1">{submitLabel}</h2>
+    <div className={[styles.auth, className].filter(Boolean).join(' ')}>
+      <Card wide className={styles.card}>
+        <p className={styles.eyebrow}>{title}</p>
+        <h2 className={styles.title}>{submitLabel}</h2>
         {error && (
-          <div className="toast danger" role="alert">
+          <Toast variant="danger" role="alert">
             {error}
-          </div>
+          </Toast>
         )}
-        <form className="form" onSubmit={handleSubmit}>
-          <label className="field">
+        <form className={styles.form} onSubmit={handleSubmit}>
+          <label className={styles.field}>
             <span>Имя пользователя</span>
             <input
               type="text"
@@ -65,7 +62,7 @@ export function AuthPage({
               onChange={(e) => setUsername(e.target.value)}
             />
           </label>
-          <label className="field">
+          <label className={styles.field}>
             <span>Пароль</span>
             <input
               type="password"
@@ -75,7 +72,7 @@ export function AuthPage({
             />
           </label>
           {requireConfirm && (
-            <label className="field">
+            <label className={styles.field}>
               <span>Повторите пароль</span>
               <input
                 type="password"
@@ -86,37 +83,37 @@ export function AuthPage({
             </label>
           )}
           {requireConfirm && passwordRules.length > 0 && (
-            <div className="password-rules">
-              <p className="note">Пароль должен соответствовать требованиям:</p>
-              <ul className="ticks">
+            <div className={styles.passwordRules}>
+              <p className={styles.note}>Пароль должен соответствовать требованиям:</p>
+              <ul className={styles.ticks}>
                 {passwordRules.map((rule) => (
                   <li key={rule}>{rule}</li>
                 ))}
               </ul>
             </div>
           )}
-          <button className="btn primary" type="submit">
+          <Button variant="primary" type="submit">
             {submitLabel}
-          </button>
+          </Button>
         </form>
-        <div className="auth-switch">
+        <div className={styles.authSwitch}>
           {title === 'Вход' ? (
             <p>
               Нет аккаунта?{' '}
-              <button className="link" onClick={() => onNavigate('/register')}>
+              <Button variant="link" onClick={() => onNavigate('/register')} className={styles.switchButton}>
                 Зарегистрироваться
-              </button>
+              </Button>
             </p>
           ) : (
             <p>
               Уже есть аккаунт?{' '}
-              <button className="link" onClick={() => onNavigate('/login')}>
+              <Button variant="link" onClick={() => onNavigate('/login')} className={styles.switchButton}>
                 Войти
-              </button>
+              </Button>
             </p>
           )}
         </div>
-      </div>
+      </Card>
     </div>
   )
 }

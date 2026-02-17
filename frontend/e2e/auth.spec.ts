@@ -26,7 +26,8 @@ test('register and login flow keeps session', async ({ page }) => {
   await page.goto('/profile')
   await expect(page.locator('input[type="text"]').first()).toHaveValue(username)
 
-  await page.locator('.actions .btn.logaut').click()
+  await page.goto(`/users/${encodeURIComponent(username)}`)
+  await page.getByTestId('logout-button').click()
   await expect(page).toHaveURL('/login')
 
   await page.locator('input[type="text"]').first().fill(username)

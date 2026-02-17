@@ -1,9 +1,11 @@
 import { useEffect, useMemo } from 'react'
 
 import type { UserProfile } from '../entities/user/types'
-import { avatarFallback, formatTimestamp } from '../shared/lib/format'
+import { formatTimestamp } from '../shared/lib/format'
 import { useDirectInbox } from '../shared/directInbox'
 import { usePresence } from '../shared/presence'
+import { Avatar, Button, Card, Panel, Toast } from '../shared/ui'
+import styles from '../styles/pages/DirectChatsPage.module.css'
 
 type Props = {
   user: UserProfile | null
@@ -17,11 +19,10 @@ type ListProps = Props & {
 }
 
 /**
- * Рендерит компонент `DirectChatsList` и связанную разметку.
- * @param props Входной параметр `props`.
- * @returns Результат выполнения `DirectChatsList`.
+ * Список direct-диалогов пользователя.
+ * @param props Входные параметры состояния и навигации.
+ * @returns JSX-блок списка direct-чатов.
  */
-
 export function DirectChatsList({
   user,
   onNavigate,
@@ -39,28 +40,10 @@ export function DirectChatsList({
     [presenceOnline, presenceStatus],
   )
 
-  /**
-   * Выполняет метод `useEffect`.
-   * @param props Входной параметр `props`.
-   * @returns Результат выполнения `useEffect`.
-   */
-
   useEffect(() => {
     if (!resetActiveOnMount) return
-    /**
-     * Выполняет метод `setActiveRoom`.
-     * @param null Входной параметр `null`.
-     * @returns Результат выполнения `setActiveRoom`.
-     */
-
     setActiveRoom(null)
   }, [resetActiveOnMount, setActiveRoom])
-
-  /**
-   * Выполняет метод `useEffect`.
-   * @param props Входной параметр `props`.
-   * @returns Результат выполнения `useEffect`.
-   */
 
   useEffect(() => {
     if (!user) return
@@ -69,86 +52,82 @@ export function DirectChatsList({
 
   if (!user) {
     return (
-      <div className="panel">
+      <Panel>
         <p>Чтобы пользоваться личными чатами, войдите в аккаунт.</p>
-        <div className="actions">
-          <button className="btn primary" onClick={() => onNavigate('/login')}>
+        <div className={styles.actions}>
+          <Button variant="primary" onClick={() => onNavigate('/login')}>
             Войти
-          </button>
-          <button className="btn ghost" onClick={() => onNavigate('/register')}>
+          </Button>
+          <Button variant="ghost" onClick={() => onNavigate('/register')}>
             Регистрация
-          </button>
+          </Button>
         </div>
-      </div>
+      </Panel>
     )
   }
 
-  const sectionClass = ['card', 'direct-inbox', className].filter(Boolean).join(' ')
-
   return (
-    <section className={sectionClass}>
-      <div className="card-header">
+    <Card as="section" className={[styles.directInbox, className].filter(Boolean).join(' ')}>
+      <div className={styles.header}>
         <div>
-          <p className="eyebrow">Личные чаты</p>
-          <h2>Диалоги</h2>
+          <p className={styles.eyebrow}>Личные чаты</p>
+          <h2 className={styles.title}>Диалоги</h2>
         </div>
       </div>
 
-      {loading && <p className="muted">Загрузка диалогов...</p>}
-      {error && <div className="toast danger">{error}</div>}
+      {loading && <p className={styles.muted}>Загрузка диалогов...</p>}
+      {error && <Toast variant="danger">{error}</Toast>}
 
-      {!loading && !error && !items.length && (
-        <p className="muted">Пока нет личных сообщений</p>
-      )}
+      {!loading && !error && !items.length && <p className={styles.muted}>Пока нет личных сообщений</p>}
 
       {!loading && !error && items.length > 0 && (
-        <div className="direct-chat-list">
+        <div className={styles.directChatList}>
           {items.map((item) => {
             const isActive = Boolean(activeUsername && item.peer.username === activeUsername)
             const isPeerOnline = onlineUsernames.has(item.peer.username)
             return (
               <button
                 key={item.slug}
-                className={`direct-chat-item${isActive ? ' is-active' : ''}`}
+                className={[styles.directChatItem, isActive ? styles.active : ''].filter(Boolean).join(' ')}
                 aria-current={isActive ? 'page' : undefined}
                 onClick={() => onNavigate(`/direct/@${encodeURIComponent(item.peer.username)}`)}
+                type="button"
               >
-                <div className={`avatar tiny${isPeerOnline ? ' is-online' : ''}`}>
-                  {item.peer.profileImage ? (
-                    <img src={item.peer.profileImage} alt={item.peer.username} loading="lazy" decoding="async" />
-                  ) : (
-                    <span>{avatarFallback(item.peer.username)}</span>
-                  )}
-                </div>
-                <div className="direct-chat-item__body">
-                  <div className="direct-chat-item__head">
-                    <strong className="direct-chat-item__name" title={item.peer.username}>
+                <Avatar
+                  username={item.peer.username}
+                  profileImage={item.peer.profileImage}
+                  size="tiny"
+                  online={isPeerOnline}
+                />
+                <div className={styles.itemBody}>
+                  <div className={styles.itemHead}>
+                    <strong className={styles.itemName} title={item.peer.username}>
                       {item.peer.username}
                     </strong>
-                    <div className="direct-chat-item__meta">
-                      <span className="muted">{formatTimestamp(item.lastMessageAt)}</span>
+                    <div className={styles.itemMeta}>
+                      <span className={styles.time}>{formatTimestamp(item.lastMessageAt)}</span>
                       {unreadCounts[item.slug] > 0 && (
-                        <span className="badge direct-chat-badge">{unreadCounts[item.slug]}</span>
+                        <span className={styles.badge}>{unreadCounts[item.slug]}</span>
                       )}
                     </div>
                   </div>
-                  <p>{item.lastMessage}</p>
+                  <p className={styles.preview}>{item.lastMessage}</p>
                 </div>
               </button>
             )
           })}
         </div>
       )}
-    </section>
+    </Card>
   )
 }
 
 /**
- * Рендерит компонент `DirectChatsPage` и связанную разметку.
- * @param props Входной параметр `props`.
- * @returns Результат выполнения `DirectChatsPage`.
+ * Страница списка direct-диалогов.
+ * @param props Входные параметры пользователя и навигации.
+ * @returns JSX-страница direct-инбокса.
  */
-
 export function DirectChatsPage({ user, onNavigate }: Props) {
   return <DirectChatsList user={user} onNavigate={onNavigate} />
 }
+

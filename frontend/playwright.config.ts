@@ -17,6 +17,11 @@ export default defineConfig({
       command: `${backendPython} manage.py migrate && ${backendPython} manage.py runserver 127.0.0.1:8000`,
       url: 'http://127.0.0.1:8000/api/health/live/',
       cwd: '../backend',
+      env: {
+        ...process.env,
+        AUTH_RATE_LIMIT: '200',
+        WS_CONNECT_RATE_LIMIT: '1000',
+      },
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },

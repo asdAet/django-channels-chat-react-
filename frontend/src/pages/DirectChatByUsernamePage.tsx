@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import type { ApiError } from '../shared/api/types'
 import { chatController } from '../controllers/ChatController'
 import type { UserProfile } from '../entities/user/types'
+import type { ApiError } from '../shared/api/types'
 import { debugLog } from '../shared/lib/debug'
+import { Button, Panel } from '../shared/ui'
+import styles from '../styles/pages/DirectChatByUsernamePage.module.css'
 import { ChatRoomPage } from './ChatRoomPage'
 
 type Props = {
@@ -19,11 +21,10 @@ type DirectChatState = {
 }
 
 /**
- * Рендерит компонент `DirectChatByUsernamePage` и связанную разметку.
- * @param props Входной параметр `props`.
- * @returns Результат выполнения `DirectChatByUsernamePage`.
+ * Страница открытия direct-чата по username.
+ * @param props Данные текущего пользователя, собеседника и навигации.
+ * @returns JSX-контент direct-чата или состояния загрузки/ошибки.
  */
-
 export function DirectChatByUsernamePage({ user, username, onNavigate }: Props) {
   const requestKey = useMemo(() => (user ? `${user.username}:${username}` : 'guest'), [user, username])
 
@@ -33,74 +34,32 @@ export function DirectChatByUsernamePage({ user, username, onNavigate }: Props) 
     error: null,
   }))
 
-  /**
-   * Выполняет метод `useEffect`.
-   * @returns Результат выполнения `useEffect`.
-   */
-
   useEffect(() => {
     if (!user) return
-
     let active = true
 
     chatController
       .startDirectChat(username)
       .then((payload) => {
         if (!active) return
-        /**
-         * Выполняет метод `setState`.
-         * @param props Входной параметр `props`.
-         * @returns Результат выполнения `setState`.
-         */
-
         setState({ key: requestKey, slug: payload.slug, error: null })
       })
       .catch((err) => {
         if (!active) return
-        /**
-         * Выполняет метод `debugLog`.
-         * @param err Входной параметр `err`.
-         * @returns Результат выполнения `debugLog`.
-         */
-
         debugLog('Direct start failed', err)
         const apiErr = err as ApiError
         if (apiErr.status === 404) {
-          /**
-           * Выполняет метод `setState`.
-           * @param props Входной параметр `props`.
-           * @returns Результат выполнения `setState`.
-           */
-
           setState({ key: requestKey, slug: null, error: 'Пользователь не найден' })
           return
         }
         if (apiErr.status === 400) {
-          /**
-           * Выполняет метод `setState`.
-           * @param props Входной параметр `props`.
-           * @returns Результат выполнения `setState`.
-           */
-
           setState({ key: requestKey, slug: null, error: 'Нельзя открыть диалог с этим пользователем' })
           return
         }
         if (apiErr.status === 401) {
-          /**
-           * Выполняет метод `setState`.
-           * @param props Входной параметр `props`.
-           * @returns Результат выполнения `setState`.
-           */
-
           setState({ key: requestKey, slug: null, error: 'Нужна авторизация' })
           return
         }
-        /**
-         * Выполняет метод `setState`.
-         * @param props Входной параметр `props`.
-         * @returns Результат выполнения `setState`.
-         */
-
         setState({ key: requestKey, slug: null, error: 'Не удалось открыть личный чат' })
       })
 
@@ -111,17 +70,17 @@ export function DirectChatByUsernamePage({ user, username, onNavigate }: Props) 
 
   if (!user) {
     return (
-      <div className="panel">
+      <Panel>
         <p>Чтобы писать в личные сообщения, войдите в аккаунт.</p>
-        <div className="actions">
-          <button className="btn primary" onClick={() => onNavigate('/login')}>
+        <div className={styles.actions}>
+          <Button variant="primary" onClick={() => onNavigate('/login')}>
             Войти
-          </button>
-          <button className="btn ghost" onClick={() => onNavigate('/register')}>
+          </Button>
+          <Button variant="ghost" onClick={() => onNavigate('/register')}>
             Регистрация
-          </button>
+          </Button>
         </div>
-      </div>
+      </Panel>
     )
   }
 
@@ -132,32 +91,33 @@ export function DirectChatByUsernamePage({ user, username, onNavigate }: Props) 
 
   if (loading) {
     return (
-      <div className="panel muted" aria-busy="true">
+      <Panel muted busy>
         Открываем диалог...
-      </div>
+      </Panel>
     )
   }
 
   if (error) {
     return (
-      <div className="panel">
+      <Panel>
         <p>{error}</p>
-        <div className="actions">
-          <button className="btn ghost" onClick={() => onNavigate('/direct')}>
+        <div className={styles.actions}>
+          <Button variant="ghost" onClick={() => onNavigate('/direct')}>
             К списку диалогов
-          </button>
+          </Button>
         </div>
-      </div>
+      </Panel>
     )
   }
 
   if (!slug) {
     return (
-      <div className="panel">
+      <Panel>
         <p>Диалог недоступен.</p>
-      </div>
+      </Panel>
     )
   }
 
   return <ChatRoomPage slug={slug} user={user} onNavigate={onNavigate} />
 }
+

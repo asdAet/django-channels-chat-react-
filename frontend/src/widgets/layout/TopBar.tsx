@@ -1,19 +1,20 @@
 import type { UserProfile } from '../../entities/user/types'
-import { avatarFallback } from '../../shared/lib/format'
 import { useDirectInbox } from '../../shared/directInbox'
 import { usePresence } from '../../shared/presence'
+import { Avatar, Button } from '../../shared/ui'
+import styles from './TopBar.module.css'
 
 type Props = {
   user: UserProfile | null
   onNavigate: (path: string) => void
   onLogout: () => void
 }
-/**
- * Рендерит компонент `TopBar` и связанную разметку.
- * @param props Входной параметр `props`.
- * @returns Результат выполнения `TopBar`.
- */
 
+/**
+ * Верхняя панель навигации приложения.
+ * @param props Текущий пользователь и обработчики навигации.
+ * @returns JSX-разметка верхней панели.
+ */
 export function TopBar({ user, onNavigate }: Props) {
   const { unreadDialogsCount } = useDirectInbox()
   const { online: presenceOnline, status: presenceStatus } = usePresence()
@@ -23,52 +24,72 @@ export function TopBar({ user, onNavigate }: Props) {
     presenceOnline.some((entry) => entry.username === user?.username)
 
   return (
-    <header className="topbar">
-      <button className="brand" onClick={() => onNavigate('/')}>
+    <header className={styles.root} data-testid="topbar">
+      <button className={styles.brand} onClick={() => onNavigate('/')} type="button">
         EchoChat
       </button>
-      <nav>
-        <button className="link" onClick={() => onNavigate('/rooms/public')}>
+
+      <nav className={styles.nav} aria-label="Главная навигация">
+        <Button variant="link" className={styles.navLink} onClick={() => onNavigate('/rooms/public')}>
           Публичный чат
-        </button>
+        </Button>
+
         {user && (
-          <button className="link link-with-badge" onClick={() => onNavigate('/direct')}>
+          <Button
+            variant="link"
+            className={[styles.navLink, styles.linkWithBadge].join(' ')}
+            onClick={() => onNavigate('/direct')}
+            data-testid="direct-nav-button"
+          >
             <span>Личные чаты</span>
-            {unreadDialogsCount > 0 && <span className="badge">{unreadDialogsCount}</span>}
-          </button>
+            {unreadDialogsCount > 0 && (
+              <span className={styles.badge} aria-label={`Unread dialogs: ${unreadDialogsCount}`} data-testid="direct-unread-badge">
+                {unreadDialogsCount}
+              </span>
+            )}
+          </Button>
         )}
+
         {user && (
-          <button className="link" onClick={() => onNavigate(`/users/${encodeURIComponent(user.username)}`)}>
-            Профиль
-          </button>
-        )}
-      </nav>
-      <div className="nav-actions">
-        {user ? (
-          <button
-            className="avatar_link"
-            aria-label="Открыть профиль"
+          <Button
+            variant="link"
+            className={styles.navLink}
             onClick={() => onNavigate(`/users/${encodeURIComponent(user.username)}`)}
           >
-            <div className={`avatar tiny${isCurrentUserOnline ? ' is-online' : ''}`}>
-              {user.profileImage ? (
-                <img src={user.profileImage} alt={user.username} decoding="async" />
-              ) : (
-                <span>{avatarFallback(user.username)}</span>
-              )}
-            </div>
+            Профиль
+          </Button>
+        )}
+      </nav>
+
+      <div className={styles.navActions}>
+        {user ? (
+          <button
+            className={styles.avatarLink}
+            aria-label="Открыть профиль"
+            onClick={() => onNavigate(`/users/${encodeURIComponent(user.username)}`)}
+            type="button"
+          >
+            <Avatar
+              username={user.username}
+              profileImage={user.profileImage}
+              size="tiny"
+              online={isCurrentUserOnline}
+              className={styles.avatar}
+              loading="eager"
+            />
           </button>
         ) : (
           <>
-            <button className="link" onClick={() => onNavigate('/login')}>
+            <Button variant="link" className={styles.navLink} onClick={() => onNavigate('/login')}>
               Войти
-            </button>
-            <button className="link" onClick={() => onNavigate('/register')}>
+            </Button>
+            <Button variant="link" className={styles.navLink} onClick={() => onNavigate('/register')}>
               Регистрация
-            </button>
+            </Button>
           </>
         )}
       </div>
     </header>
   )
 }
+

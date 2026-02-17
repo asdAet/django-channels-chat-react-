@@ -1,20 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
 
-import '../App.css'
-import { navigate, parseRoute, type Route } from './router'
-import { AuthPage } from '../pages/AuthPage'
-import { ChatRoomPage } from '../pages/ChatRoomPage'
-import { DirectLayout } from '../pages/DirectLayout'
-import { HomePage } from '../pages/HomePage'
-import { ProfilePage } from '../pages/ProfilePage'
-import { UserProfilePage } from '../pages/UserProfilePage'
 import { useAuth } from '../hooks/useAuth'
 import { usePasswordRules } from '../hooks/usePasswordRules'
 import type { ApiError } from '../shared/api/types'
 import { debugLog } from '../shared/lib/debug'
 import { PresenceProvider } from '../shared/presence'
 import { DirectInboxProvider } from '../shared/directInbox'
+import { Toast } from '../shared/ui'
 import { TopBar } from '../widgets/layout/TopBar'
+import { AppRoutes } from './routes'
+import styles from '../styles/pages/AppShell.module.css'
 
 type ProfileFieldErrors = Record<string, string[]>
 type ProfileSaveResult =
@@ -22,39 +18,21 @@ type ProfileSaveResult =
   | { ok: false; errors?: ProfileFieldErrors; message?: string }
 
 /**
- * Рендерит компонент `App` и связанную разметку.
- * @returns Результат выполнения `App`.
+ * Внутренний роутинг-слой приложения с глобальными провайдерами и баннерами.
+ * @returns JSX-разметка основного shell приложения.
  */
-
-export function App() {
-  const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname))
+function AppShell() {
+  const navigate = useNavigate()
+  const location = useLocation()
   const { auth, login, register, logout, updateProfile } = useAuth()
-  const { rules: passwordRules } = usePasswordRules(route.name === 'register')
+  const { rules: passwordRules } = usePasswordRules(location.pathname === '/register')
   const [banner, setBanner] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  /**
-   * Выполняет метод `useEffect`.
-   * @param props Входной параметр `props`.
-   * @returns Результат выполнения `useEffect`.
-   */
-
-  useEffect(() => {
-    const onPop = () => setRoute(parseRoute(window.location.pathname))
-    window.addEventListener('popstate', onPop)
-    return () => window.removeEventListener('popstate', onPop)
-  }, [])
-
-  /**
-   * Выполняет метод `useEffect`.
-   * @param props Входной параметр `props`.
-   * @returns Результат выполнения `useEffect`.
-   */
-
   useEffect(() => {
     if (!banner) return
-    const t = window.setTimeout(() => setBanner(null), 4200)
-    return () => window.clearTimeout(t)
+    const timerId = window.setTimeout(() => setBanner(null), 4200)
+    return () => window.clearTimeout(timerId)
   }, [banner])
 
   const extractMessage = (err: unknown) => {
@@ -62,9 +40,7 @@ export function App() {
       const apiErr = err as ApiError
       const apiErrors = apiErr.data && (apiErr.data.errors as Record<string, string[]> | undefined)
       if (apiErrors) {
-        return Object.values(apiErrors)
-          .flat()
-          .join(' ')
+        return Object.values(apiErrors).flat().join(' ')
       }
       if (apiErr.status === 400 && apiErr.message?.includes('status code 400')) {
         return 'Проверьте введённые данные и попробуйте снова.'
@@ -114,6 +90,7 @@ export function App() {
     const data = (anyErr.data ?? anyErr.response?.data) as Record<string, unknown> | undefined
     const rawErrors = data && (data.errors as Record<string, unknown> | undefined)
     if (!rawErrors || typeof rawErrors !== 'object') return null
+
     const normalized: ProfileFieldErrors = {}
     for (const [field, value] of Object.entries(rawErrors)) {
       if (Array.isArray(value)) {
@@ -126,251 +103,135 @@ export function App() {
     return Object.keys(normalized).length ? normalized : null
   }
 
-  const handleNavigate = (path: string) => navigate(path, setRoute)
+  const onNavigate = useCallback(
+    (path: string) => {
+      navigate(path)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    },
+    [navigate],
+  )
 
-  const handleLogin = async (username: string, password: string) => {
-    /**
-     * Выполняет метод `setError`.
-     * @param null Входной параметр `null`.
-     * @returns Результат выполнения `setError`.
-     */
+  const handleLogin = useCallback(
+    async (username: string, password: string) => {
+      setError(null)
+      try {
+        await login({ username, password })
+        setBanner('Добро пожаловать обратно!')
+        onNavigate('/')
+      } catch (err) {
+        debugLog('Login failed', err)
+        setError(extractAuthMessage(err, 'Неверный логин или пароль'))
+      }
+    },
+    [login, onNavigate],
+  )
 
-    setError(null)
-    try {
-      await login({ username, password })
-      /**
-       * Выполняет метод `setBanner`.
-       * @returns Результат выполнения `setBanner`.
-       */
+  const handleRegister = useCallback(
+    async (username: string, password1: string, password2: string) => {
+      setError(null)
+      try {
+        await register({ username, password1, password2 })
+        setBanner('Аккаунт создан. Можно общаться!')
+        onNavigate('/')
+      } catch (err) {
+        debugLog('Registration failed', err)
+        setError(extractAuthMessage(err, 'Проверьте данные регистрации'))
+      }
+    },
+    [onNavigate, register],
+  )
 
-      setBanner('Добро пожаловать обратно!')
-      /**
-       * Выполняет метод `handleNavigate`.
-       * @returns Результат выполнения `handleNavigate`.
-       */
-
-      handleNavigate('/')
-    } catch (err) {
-      /**
-       * Выполняет метод `debugLog`.
-       * @param err Входной параметр `err`.
-       * @returns Результат выполнения `debugLog`.
-       */
-
-      debugLog('Login failed', err)
-      /**
-       * Выполняет метод `setError`.
-       * @returns Результат выполнения `setError`.
-       */
-
-      setError(extractAuthMessage(err, 'Неверный логин или пароль'))
-    }
-  }
-
-  const handleRegister = async (username: string, password1: string, password2: string) => {
-    /**
-     * Выполняет метод `setError`.
-     * @param null Входной параметр `null`.
-     * @returns Результат выполнения `setError`.
-     */
-
-    setError(null)
-    try {
-      await register({ username, password1, password2 })
-      /**
-       * Выполняет метод `setBanner`.
-       * @returns Результат выполнения `setBanner`.
-       */
-
-      setBanner('Аккаунт создан. Можно общаться!')
-      /**
-       * Выполняет метод `handleNavigate`.
-       * @returns Результат выполнения `handleNavigate`.
-       */
-
-      handleNavigate('/')
-    } catch (err) {
-      /**
-       * Выполняет метод `debugLog`.
-       * @param err Входной параметр `err`.
-       * @returns Результат выполнения `debugLog`.
-       */
-
-      debugLog('Registration failed', err)
-      /**
-       * Выполняет метод `setError`.
-       * @returns Результат выполнения `setError`.
-       */
-
-      setError(extractAuthMessage(err, 'Проверьте данные регистрации'))
-    }
-  }
-
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     await logout()
-    /**
-     * Выполняет метод `setBanner`.
-     * @returns Результат выполнения `setBanner`.
-     */
-
     setBanner('Вы вышли из аккаунта')
-    /**
-     * Выполняет метод `handleNavigate`.
-     * @returns Результат выполнения `handleNavigate`.
-     */
+    onNavigate('/login')
+  }, [logout, onNavigate])
 
-    handleNavigate('/login')
-  }
-
-  const handleProfileSave = async (fields: {
-    username: string
-    email: string
-    image?: File | null
-    bio?: string
-  }): Promise<ProfileSaveResult> => {
-    if (!auth.user) return { ok: false, message: 'Сначала войдите в аккаунт.' }
-    /**
-     * Выполняет метод `setError`.
-     * @param null Входной параметр `null`.
-     * @returns Результат выполнения `setError`.
-     */
-
-    setError(null)
-    try {
-      await updateProfile(fields)
-      /**
-       * Выполняет метод `setBanner`.
-       * @returns Результат выполнения `setBanner`.
-       */
-
-      setBanner('Профиль обновлен')
-      const nextUsername = fields.username?.trim() || auth.user?.username
-      if (nextUsername) {
-        /**
-         * Выполняет метод `handleNavigate`.
-         * @returns Результат выполнения `handleNavigate`.
-         */
-
-        handleNavigate(`/users/${encodeURIComponent(nextUsername)}`)
-      }
-      return { ok: true }
-    } catch (err) {
-      /**
-       * Выполняет метод `debugLog`.
-       * @param err Входной параметр `err`.
-       * @returns Результат выполнения `debugLog`.
-       */
-
-      debugLog('Profile update failed', err)
-      const apiErr = err as ApiError
-      if (apiErr && typeof apiErr.status === 'number' && apiErr.status === 401) {
-        /**
-         * Выполняет метод `setError`.
-         * @returns Результат выполнения `setError`.
-         */
-
-        setError('Сессия истекла. Войдите снова.')
-        /**
-         * Выполняет метод `handleNavigate`.
-         * @returns Результат выполнения `handleNavigate`.
-         */
-
-        handleNavigate('/login')
-        return { ok: false, message: 'Сессия истекла. Войдите снова.' }
-      }
-      if (apiErr && typeof apiErr.status === 'number' && apiErr.status === 413) {
-        return {
-          ok: false,
-          errors: { image: ['Файл слишком большой. Максимум 20 МБ.'] },
-          message: 'Файл слишком большой. Максимум 20 МБ.',
+  const handleProfileSave = useCallback(
+    async (fields: { username: string; email: string; image?: File | null; bio?: string }): Promise<ProfileSaveResult> => {
+      if (!auth.user) return { ok: false, message: 'Сначала войдите в аккаунт.' }
+      setError(null)
+      try {
+        await updateProfile(fields)
+        setBanner('Профиль обновлен')
+        const nextUsername = fields.username?.trim() || auth.user?.username
+        if (nextUsername) {
+          onNavigate(`/users/${encodeURIComponent(nextUsername)}`)
         }
-      }
-      const fieldErrors = extractProfileErrors(err)
-      if (fieldErrors) {
-        return { ok: false, errors: fieldErrors }
-      }
-      return { ok: false, message: extractMessage(err) }
-    }
-  }
+        return { ok: true }
+      } catch (err) {
+        debugLog('Profile update failed', err)
+        const apiErr = err as ApiError
 
-  const renderRoute = () => {
-    switch (route.name) {
-      case 'login':
-        return (
-          <AuthPage
-            title="Вход"
-            submitLabel="Войти"
-            onSubmit={(u, p) => handleLogin(u, p)}
-            onNavigate={handleNavigate}
-            error={error}
-          />
-        )
-      case 'register':
-        return (
-          <AuthPage
-            title="Регистрация"
-            submitLabel="Создать аккаунт"
-            onSubmit={(u, p, p2) => handleRegister(u, p, p2 ?? '')}
-            requireConfirm
-            onNavigate={handleNavigate}
-            error={error}
-            passwordRules={passwordRules}
-          />
-        )
-      case 'profile':
-        return (
-          <ProfilePage
-            key={auth.user?.username || 'guest'}
-            user={auth.user}
-            onSave={handleProfileSave}
-            onNavigate={handleNavigate}
-          />
-        )
-      case 'directInbox':
-        return <DirectLayout user={auth.user} onNavigate={handleNavigate} />
-      case 'directByUsername':
-        return (
-          <DirectLayout user={auth.user} username={route.username} onNavigate={handleNavigate} />
-        )
-      case 'user':
-        return (
-          <UserProfilePage
-            key={route.username}
-            user={auth.user}
-            username={route.username}
-            currentUser={auth.user}
-            onNavigate={handleNavigate}
-            onLogout={handleLogout}
-          />
-        )
-      case 'room':
-        return <ChatRoomPage key={route.slug} slug={route.slug} user={auth.user} onNavigate={handleNavigate} />
-      default:
-        return <HomePage user={auth.user} onNavigate={handleNavigate} />
-    }
-  }
+        if (apiErr && typeof apiErr.status === 'number' && apiErr.status === 401) {
+          setError('Сессия истекла. Войдите снова.')
+          onNavigate('/login')
+          return { ok: false, message: 'Сессия истекла. Войдите снова.' }
+        }
+
+        if (apiErr && typeof apiErr.status === 'number' && apiErr.status === 413) {
+          return {
+            ok: false,
+            errors: { image: ['Файл слишком большой. Максимум 20 МБ.'] },
+            message: 'Файл слишком большой. Максимум 20 МБ.',
+          }
+        }
+
+        const fieldErrors = extractProfileErrors(err)
+        if (fieldErrors) {
+          return { ok: false, errors: fieldErrors }
+        }
+
+        return { ok: false, message: extractMessage(err) }
+      }
+    },
+    [auth.user, onNavigate, updateProfile],
+  )
+
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/register'
 
   return (
     <PresenceProvider user={auth.user} ready={!auth.loading}>
       <DirectInboxProvider user={auth.user} ready={!auth.loading}>
-        <div className="app-shell">
-          <TopBar user={auth.user} onNavigate={handleNavigate} onLogout={handleLogout} />
-          <main className="content">
+        <div className={styles.appShell}>
+          <TopBar user={auth.user} onNavigate={onNavigate} onLogout={handleLogout} />
+          <main className={styles.content}>
             {banner && (
-              <div className="toast success" role="status">
+              <Toast variant="success" role="status">
                 {banner}
-              </div>
+              </Toast>
             )}
-            {error && route.name !== 'login' && route.name !== 'register' && (
-              <div className="toast danger" role="alert">
+            {error && !isAuthRoute && (
+              <Toast variant="danger" role="alert">
                 {error}
-              </div>
+              </Toast>
             )}
-            {renderRoute()}
+            <AppRoutes
+              user={auth.user}
+              error={error}
+              passwordRules={passwordRules}
+              onNavigate={onNavigate}
+              onLogin={handleLogin}
+              onRegister={handleRegister}
+              onLogout={handleLogout}
+              onProfileSave={handleProfileSave}
+            />
           </main>
         </div>
       </DirectInboxProvider>
     </PresenceProvider>
+  )
+}
+
+/**
+ * Корневой компонент frontend-приложения.
+ * @returns JSX-разметка с BrowserRouter.
+ */
+export function App() {
+  return (
+    <BrowserRouter>
+      <AppShell />
+    </BrowserRouter>
   )
 }
 

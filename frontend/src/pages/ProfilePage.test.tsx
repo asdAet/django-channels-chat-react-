@@ -167,7 +167,7 @@ describe('ProfilePage', () => {
      */
 
     expect(screen.getByText('В сети')).toBeInTheDocument()
-    expect(container.querySelector('.profile_avatar_wrapper.is-online')).not.toBeNull()
+    expect(container.querySelector('[data-online="true"]')).not.toBeNull()
   })
 
   /**
@@ -195,6 +195,6 @@ describe('ProfilePage', () => {
      */
 
     expect(screen.getByText(/Последний раз в сети:/i)).toBeInTheDocument()
-    expect(container.querySelector('.profile_avatar_wrapper.is-online')).toBeNull()
+    expect(container.querySelector('[data-online="true"]')).toBeNull()
   })
 })

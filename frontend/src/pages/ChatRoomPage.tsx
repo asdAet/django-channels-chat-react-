@@ -1,37 +1,34 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { UserProfile } from "../entities/user/types";
-import type { Message } from "../entities/message/types";
-import {
-  avatarFallback,
-  formatDayLabel,
-  formatTimestamp,
-  formatLastSeen,
-} from "../shared/lib/format";
-import { debugLog } from "../shared/lib/debug";
-import { useChatRoom } from "../hooks/useChatRoom";
-import { useOnlineStatus } from "../hooks/useOnlineStatus";
-import { useReconnectingWebSocket } from "../hooks/useReconnectingWebSocket";
-import { sanitizeText } from "../shared/lib/sanitize";
-import { getWebSocketBase } from "../shared/lib/ws";
-import { useDirectInbox } from "../shared/directInbox";
-import { usePresence } from "../shared/presence";
-import { invalidateDirectChats, invalidateRoomMessages } from "../shared/cache/cacheManager";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+import type { Message } from '../entities/message/types'
+import type { UserProfile } from '../entities/user/types'
+import { useChatRoom } from '../hooks/useChatRoom'
+import { useOnlineStatus } from '../hooks/useOnlineStatus'
+import { useReconnectingWebSocket } from '../hooks/useReconnectingWebSocket'
+import { invalidateDirectChats, invalidateRoomMessages } from '../shared/cache/cacheManager'
+import { useDirectInbox } from '../shared/directInbox'
+import { formatDayLabel, formatLastSeen, formatTimestamp } from '../shared/lib/format'
+import { debugLog } from '../shared/lib/debug'
+import { sanitizeText } from '../shared/lib/sanitize'
+import { getWebSocketBase } from '../shared/lib/ws'
+import { usePresence } from '../shared/presence'
+import { Avatar, Button, Panel, Toast } from '../shared/ui'
+import styles from '../styles/pages/ChatRoomPage.module.css'
 
 type Props = {
-  slug: string;
-  user: UserProfile | null;
-  onNavigate: (path: string) => void;
-};
+  slug: string
+  user: UserProfile | null
+  onNavigate: (path: string) => void
+}
 
-const MAX_MESSAGE_LENGTH = 1000;
-const RATE_LIMIT_COOLDOWN_MS = 10_000;
+const MAX_MESSAGE_LENGTH = 1000
+const RATE_LIMIT_COOLDOWN_MS = 10_000
 
 /**
- * Рендерит компонент `ChatRoomPage` и связанную разметку.
- * @param props Входной параметр `props`.
- * @returns Результат выполнения `ChatRoomPage`.
+ * Страница комнаты чата (публичной или direct).
+ * @param props Слаг комнаты, текущий пользователь и навигация.
+ * @returns JSX-контент комнаты.
  */
-
 export function ChatRoomPage({ slug, user, onNavigate }: Props) {
   const {
     details,
@@ -42,117 +39,75 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
     error,
     loadMore,
     setMessages,
-  } = useChatRoom(slug, user);
-  const isPublicRoom = slug === "public";
-  const isOnline = useOnlineStatus();
-  const { setActiveRoom, markRead } = useDirectInbox();
-  const { online: presenceOnline, status: presenceStatus } = usePresence();
+  } = useChatRoom(slug, user)
+  const isPublicRoom = slug === 'public'
+  const isOnline = useOnlineStatus()
+  const { setActiveRoom, markRead } = useDirectInbox()
+  const { online: presenceOnline, status: presenceStatus } = usePresence()
   const onlineUsernames = useMemo(
     () =>
       new Set(
-        presenceStatus === "online"
+        presenceStatus === 'online'
           ? presenceOnline.map((entry) => entry.username)
           : [],
       ),
     [presenceOnline, presenceStatus],
-  );
-  const [draft, setDraft] = useState("");
-  const [roomError, setRoomError] = useState<string | null>(null);
-  const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const isAtBottomRef = useRef(true);
-  const prependingRef = useRef(false);
-  const prevScrollHeightRef = useRef(0);
-  const tempIdRef = useRef(0);
+  )
+  const [draft, setDraft] = useState('')
+  const [roomError, setRoomError] = useState<string | null>(null)
+  const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null)
+  const [now, setNow] = useState(() => Date.now())
+  const listRef = useRef<HTMLDivElement | null>(null)
+  const isAtBottomRef = useRef(true)
+  const prependingRef = useRef(false)
+  const prevScrollHeightRef = useRef(0)
+  const tempIdRef = useRef(0)
 
   const openUserProfile = useCallback(
     (username: string) => {
-      if (!username) return;
-      /**
-       * Выполняет метод `onNavigate`.
-       * @returns Результат выполнения `onNavigate`.
-       */
-
-      onNavigate(`/users/${encodeURIComponent(username)}`);
+      if (!username) return
+      onNavigate(`/users/${encodeURIComponent(username)}`)
     },
     [onNavigate],
-  );
+  )
 
   const wsUrl = useMemo(() => {
-    if (!user && !isPublicRoom) return null;
-    return `${getWebSocketBase()}/ws/chat/${encodeURIComponent(slug)}/`;
-  }, [slug, user, isPublicRoom]);
+    if (!user && !isPublicRoom) return null
+    return `${getWebSocketBase()}/ws/chat/${encodeURIComponent(slug)}/`
+  }, [slug, user, isPublicRoom])
 
   const applyRateLimit = useCallback((cooldownMs: number) => {
-    const until = Date.now() + cooldownMs;
-    /**
-     * Выполняет метод `setRateLimitUntil`.
-     * @returns Результат выполнения `setRateLimitUntil`.
-     */
-
-    setRateLimitUntil((prev) => (prev && prev > until ? prev : until));
-    /**
-     * Выполняет метод `setNow`.
-     * @returns Результат выполнения `setNow`.
-     */
-
-    setNow(Date.now());
-  }, []);
+    const until = Date.now() + cooldownMs
+    setRateLimitUntil((prev) => (prev && prev > until ? prev : until))
+    setNow(Date.now())
+  }, [])
 
   const handleMessage = (event: MessageEvent) => {
     try {
-      const data = JSON.parse(event.data);
-      if (data?.error === "rate_limited") {
-        const retryAfter = Number(
-          data.retry_after ?? data.retryAfter ?? data.retry ?? NaN,
-        );
+      const data = JSON.parse(event.data)
+      if (data?.error === 'rate_limited') {
+        const retryAfter = Number(data.retry_after ?? data.retryAfter ?? data.retry ?? Number.NaN)
         const cooldownMs = Number.isFinite(retryAfter)
           ? Math.max(1, retryAfter) * 1000
-          : RATE_LIMIT_COOLDOWN_MS;
-        /**
-         * Выполняет метод `applyRateLimit`.
-         * @param cooldownMs Входной параметр `cooldownMs`.
-         * @returns Результат выполнения `applyRateLimit`.
-         */
-
-        applyRateLimit(cooldownMs);
-        return;
+          : RATE_LIMIT_COOLDOWN_MS
+        applyRateLimit(cooldownMs)
+        return
       }
-      if (data?.error === "message_too_long") {
-        /**
-         * Выполняет метод `setRoomError`.
-         * @returns Результат выполнения `setRoomError`.
-         */
 
-        setRoomError(
-          `Сообщение слишком длинное (макс ${MAX_MESSAGE_LENGTH} символов)`,
-        );
-        return;
+      if (data?.error === 'message_too_long') {
+        setRoomError(`Сообщение слишком длинное (макс ${MAX_MESSAGE_LENGTH} символов)`)
+        return
       }
-      if (!data.message) return;
-      const content = sanitizeText(String(data.message), MAX_MESSAGE_LENGTH);
-      if (!content) return;
-      tempIdRef.current += 1;
-      /**
-       * Выполняет метод `invalidateRoomMessages`.
-       * @param slug Входной параметр `slug`.
-       * @returns Результат выполнения `invalidateRoomMessages`.
-       */
 
-      invalidateRoomMessages(slug);
-      if (details?.kind === "direct") {
-        /**
-         * Выполняет метод `invalidateDirectChats`.
-         * @returns Результат выполнения `invalidateDirectChats`.
-         */
+      if (!data.message) return
+      const content = sanitizeText(String(data.message), MAX_MESSAGE_LENGTH)
+      if (!content) return
+      tempIdRef.current += 1
 
-        invalidateDirectChats();
+      invalidateRoomMessages(slug)
+      if (details?.kind === 'direct') {
+        invalidateDirectChats()
       }
-      /**
-       * Выполняет метод `setMessages`.
-       * @returns Результат выполнения `setMessages`.
-       */
 
       setMessages((prev) => [
         ...prev,
@@ -163,52 +118,22 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
           profilePic: data.profile_pic || null,
           createdAt: new Date().toISOString(),
         },
-      ]);
-    } catch (error) {
-      /**
-       * Выполняет метод `debugLog`.
-       * @param error Входной параметр `error`.
-       * @returns Результат выполнения `debugLog`.
-       */
-
-      debugLog("WS payload parse failed", error);
+      ])
+    } catch (parseError) {
+      debugLog('WS payload parse failed', parseError)
     }
-  };
-
-  /**
-   * Выполняет метод `useEffect`.
-   * @param props Входной параметр `props`.
-   * @returns Результат выполнения `useEffect`.
-   */
+  }
 
   useEffect(() => {
-    if (!user || details?.kind !== "direct") return;
+    if (!user || details?.kind !== 'direct') return
 
-    /**
-     * Выполняет метод `setActiveRoom`.
-     * @param slug Входной параметр `slug`.
-     * @returns Результат выполнения `setActiveRoom`.
-     */
-
-    setActiveRoom(slug);
-    /**
-     * Выполняет метод `markRead`.
-     * @param slug Входной параметр `slug`.
-     * @returns Результат выполнения `markRead`.
-     */
-
-    markRead(slug);
+    setActiveRoom(slug)
+    markRead(slug)
 
     return () => {
-      /**
-       * Выполняет метод `setActiveRoom`.
-       * @param null Входной параметр `null`.
-       * @returns Результат выполнения `setActiveRoom`.
-       */
-
-      setActiveRoom(null);
-    };
-  }, [details?.kind, markRead, setActiveRoom, slug, user]);
+      setActiveRoom(null)
+    }
+  }, [details?.kind, markRead, setActiveRoom, slug, user])
 
   const { status, lastError, send } = useReconnectingWebSocket({
     url: wsUrl,
@@ -216,322 +141,241 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
     onOpen: () => setRoomError(null),
     onClose: (event) => {
       if (event.code !== 1000 && event.code !== 1001) {
-        /**
-         * Выполняет метод `setRoomError`.
-         * @returns Результат выполнения `setRoomError`.
-         */
-
-        setRoomError("Соединение потеряно. Пытаемся восстановить...");
+        setRoomError('Соединение потеряно. Пытаемся восстановить...')
       }
     },
-    onError: () => setRoomError("Ошибка соединения"),
-  });
-
-  /**
-   * Выполняет метод `useEffect`.
-   * @param props Входной параметр `props`.
-   * @returns Результат выполнения `useEffect`.
-   */
+    onError: () => setRoomError('Ошибка соединения'),
+  })
 
   useEffect(() => {
-    if (!rateLimitUntil) return;
-    const id = window.setInterval(() => {
-      const current = Date.now();
-      /**
-       * Выполняет метод `setNow`.
-       * @param current Входной параметр `current`.
-       * @returns Результат выполнения `setNow`.
-       */
-
-      setNow(current);
+    if (!rateLimitUntil) return
+    const intervalId = window.setInterval(() => {
+      const current = Date.now()
+      setNow(current)
       if (current >= rateLimitUntil) {
-        window.clearInterval(id);
+        window.clearInterval(intervalId)
       }
-    }, 250);
-    return () => window.clearInterval(id);
-  }, [rateLimitUntil]);
-
-  /**
-   * Выполняет метод `useEffect`.
-   * @param props Входной параметр `props`.
-   * @returns Результат выполнения `useEffect`.
-   */
+    }, 250)
+    return () => window.clearInterval(intervalId)
+  }, [rateLimitUntil])
 
   useEffect(() => {
-    if (!user) return;
-    const nextProfile = user.profileImage || null;
-    const username = user.username;
-    /**
-     * Выполняет метод `setMessages`.
-     * @returns Результат выполнения `setMessages`.
-     */
+    if (!user) return
+    const nextProfile = user.profileImage || null
+    const username = user.username
 
     setMessages((prev) => {
-      let changed = false;
+      let changed = false
       const updated = prev.map((msg) => {
-        if (msg.username !== username) return msg;
-        if (msg.profilePic === nextProfile) return msg;
-        changed = true;
-        return { ...msg, profilePic: nextProfile };
-      });
-      return changed ? updated : prev;
-    });
-  }, [user, setMessages]);
+        if (msg.username !== username) return msg
+        if (msg.profilePic === nextProfile) return msg
+        changed = true
+        return { ...msg, profilePic: nextProfile }
+      })
+      return changed ? updated : prev
+    })
+  }, [user, setMessages])
 
   const handleScroll = useCallback(() => {
-    const list = listRef.current;
-    if (!list) return;
-    const { scrollTop, scrollHeight, clientHeight } = list;
-    const nearBottom = scrollHeight - scrollTop - clientHeight < 80;
-    isAtBottomRef.current = nearBottom;
+    const list = listRef.current
+    if (!list) return
+    const { scrollTop, scrollHeight, clientHeight } = list
+    const nearBottom = scrollHeight - scrollTop - clientHeight < 80
+    isAtBottomRef.current = nearBottom
 
     if (scrollTop < 120 && hasMore && !loadingMore && !loading) {
-      prependingRef.current = true;
-      prevScrollHeightRef.current = scrollHeight;
-      /**
-       * Выполняет метод `loadMore`.
-       * @returns Результат выполнения `loadMore`.
-       */
-
-      loadMore();
+      prependingRef.current = true
+      prevScrollHeightRef.current = scrollHeight
+      loadMore()
     }
-  }, [hasMore, loadingMore, loading, loadMore]);
-
-  /**
-   * Выполняет метод `useEffect`.
-   * @param props Входной параметр `props`.
-   * @returns Результат выполнения `useEffect`.
-   */
+  }, [hasMore, loadingMore, loading, loadMore])
 
   useEffect(() => {
-    const list = listRef.current;
-    if (!list) return;
+    const list = listRef.current
+    if (!list) return
     if (prependingRef.current) {
-      const delta = list.scrollHeight - prevScrollHeightRef.current;
-      list.scrollTop = list.scrollTop + delta;
-      prependingRef.current = false;
-      return;
+      const delta = list.scrollHeight - prevScrollHeightRef.current
+      list.scrollTop += delta
+      prependingRef.current = false
+      return
     }
     if (isAtBottomRef.current) {
-      list.scrollTop = list.scrollHeight;
+      list.scrollTop = list.scrollHeight
     }
-  }, [messages]);
+  }, [messages])
 
-  const rateLimitRemainingMs = rateLimitUntil
-    ? Math.max(0, rateLimitUntil - now)
-    : 0;
-  const rateLimitActive = rateLimitRemainingMs > 0;
-  const rateLimitSeconds = Math.ceil(rateLimitRemainingMs / 1000);
+  const rateLimitRemainingMs = rateLimitUntil ? Math.max(0, rateLimitUntil - now) : 0
+  const rateLimitActive = rateLimitRemainingMs > 0
+  const rateLimitSeconds = Math.ceil(rateLimitRemainingMs / 1000)
 
   const sendMessage = () => {
     if (!user) {
-      /**
-       * Выполняет метод `setRoomError`.
-       * @returns Результат выполнения `setRoomError`.
-       */
-
-      setRoomError("Авторизуйтесь, чтобы отправлять сообщения");
-      return;
+      setRoomError('Авторизуйтесь, чтобы отправлять сообщения')
+      return
     }
-    const raw = draft;
-    if (!raw.trim()) return;
+    const raw = draft
+    if (!raw.trim()) return
     if (rateLimitActive) {
-      /**
-       * Выполняет метод `setRoomError`.
-       * @returns Результат выполнения `setRoomError`.
-       */
-
-      setRoomError(`Слишком часто. Подождите ${rateLimitSeconds} сек.`);
-      return;
+      setRoomError(`Слишком часто. Подождите ${rateLimitSeconds} сек.`)
+      return
     }
     if (raw.length > MAX_MESSAGE_LENGTH) {
-      /**
-       * Выполняет метод `setRoomError`.
-       * @returns Результат выполнения `setRoomError`.
-       */
-
-      setRoomError(
-        `Сообщение слишком длинное (макс ${MAX_MESSAGE_LENGTH} символов)`,
-      );
-      return;
+      setRoomError(`Сообщение слишком длинное (макс ${MAX_MESSAGE_LENGTH} символов)`)
+      return
     }
-    if (!isOnline || status !== "online") {
-      /**
-       * Выполняет метод `setRoomError`.
-       * @returns Результат выполнения `setRoomError`.
-       */
-
-      setRoomError("Нет соединения с сервером");
-      return;
+    if (!isOnline || status !== 'online') {
+      setRoomError('Нет соединения с сервером')
+      return
     }
 
-    const cleaned = sanitizeText(raw, MAX_MESSAGE_LENGTH);
+    const cleaned = sanitizeText(raw, MAX_MESSAGE_LENGTH)
     const payload = JSON.stringify({
       message: cleaned,
       username: user.username,
       profile_pic: user.profileImage,
       room: slug,
-    });
+    })
 
     if (!send(payload)) {
-      /**
-       * Выполняет метод `setRoomError`.
-       * @returns Результат выполнения `setRoomError`.
-       */
-
-      setRoomError("Не удалось отправить сообщение");
-      return;
+      setRoomError('Не удалось отправить сообщение')
+      return
     }
-    /**
-     * Выполняет метод `setDraft`.
-     * @returns Результат выполнения `setDraft`.
-     */
+    setDraft('')
+  }
 
-    setDraft("");
-  };
-
-  const loadError = error ? "Не удалось загрузить комнату" : null;
-  const visibleError = roomError || loadError;
+  const loadError = error ? 'Не удалось загрузить комнату' : null
+  const visibleError = roomError || loadError
 
   const statusLabel = (() => {
     switch (status) {
-      case "online":
-        return "Подключено";
-      case "connecting":
-        return "Подключаемся...";
-      case "offline":
-        return "Офлайн";
-      case "error":
-        return "Ошибка соединения";
-      case "closed":
-        return "Соединение потеряно";
+      case 'online':
+        return 'Подключено'
+      case 'connecting':
+        return 'Подключаемся...'
+      case 'offline':
+        return 'Офлайн'
+      case 'error':
+        return 'Ошибка соединения'
+      case 'closed':
+        return 'Соединение потеряно'
       default:
-        return "Соединение...";
+        return 'Соединение...'
     }
-  })();
+  })()
 
   const statusClass =
-    status === "online"
-      ? "success"
-      : status === "connecting"
-        ? "warning"
-        : "muted";
+    status === 'online'
+      ? styles.pillSuccess
+      : status === 'connecting'
+        ? styles.pillWarning
+        : styles.pillMuted
 
   const timeline = useMemo(() => {
     const items: Array<
-      | { type: "day"; key: string; label: string }
-      | { type: "message"; message: Message }
-    > = [];
-    const nowDate = new Date();
-    let lastKey: string | null = null;
+      | { type: 'day'; key: string; label: string }
+      | { type: 'message'; message: Message }
+    > = []
+    const nowDate = new Date()
+    let lastKey: string | null = null
 
     for (const msg of messages) {
-      const date = new Date(msg.createdAt);
+      const date = new Date(msg.createdAt)
       if (!Number.isNaN(date.getTime())) {
-        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
           date.getDate(),
-        ).padStart(2, "0")}`;
+        ).padStart(2, '0')}`
         if (key !== lastKey) {
-          const label = formatDayLabel(date, nowDate);
+          const label = formatDayLabel(date, nowDate)
           if (label) {
-            items.push({ type: "day", key, label });
-            lastKey = key;
+            items.push({ type: 'day', key, label })
+            lastKey = key
           }
         }
       }
-      items.push({ type: "message", message: msg });
+      items.push({ type: 'message', message: msg })
     }
 
-    return items;
-  }, [messages]);
+    return items
+  }, [messages])
 
   if (!user && !isPublicRoom) {
     return (
-      <div className="panel">
+      <Panel>
         <p>Чтобы войти в комнату, авторизуйтесь.</p>
-        <div className="actions">
-          <button className="btn primary" onClick={() => onNavigate("/login")}>
+        <div className={styles.actions}>
+          <Button variant="primary" onClick={() => onNavigate('/login')}>
             Войти
-          </button>
-          <button className="btn ghost" onClick={() => onNavigate("/register")}>
+          </Button>
+          <Button variant="ghost" onClick={() => onNavigate('/register')}>
             Регистрация
-          </button>
+          </Button>
         </div>
-      </div>
-    );
+      </Panel>
+    )
   }
 
   return (
-    <div className="chat">
+    <div className={styles.chat}>
       {!isOnline && (
-        <div className="toast warning" role="status">
+        <Toast variant="warning" role="status">
           Нет подключения к интернету. Мы восстановим соединение автоматически.
-        </div>
+        </Toast>
       )}
-      {lastError && status === "error" && (
-        <div className="toast danger" role="alert">
+      {lastError && status === 'error' && (
+        <Toast variant="danger" role="alert">
           Проблемы с соединением. Проверьте сеть и попробуйте еще раз.
-        </div>
+        </Toast>
       )}
-      <div className="chat-header">
+
+      <div className={styles.chatHeader}>
         <div>
-          <p className="eyebrow">Комната</p>
-          <h2>{(details?.kind === "direct" && details?.peer?.username) || details?.createdBy || details?.name || slug}</h2>
-          {details?.kind === "direct" && (
-            <p className="muted">
-              {details?.peer?.username &&
-              onlineUsernames.has(details.peer.username)
-                ? "В сети"
-                : `Последний раз в сети: ${formatLastSeen(details?.peer?.lastSeen ?? null) || "—"}`}
+          <p className={styles.eyebrow}>Комната</p>
+          <h2>{(details?.kind === 'direct' && details?.peer?.username) || details?.createdBy || details?.name || slug}</h2>
+          {details?.kind === 'direct' && (
+            <p className={styles.muted}>
+              {details?.peer?.username && onlineUsernames.has(details.peer.username)
+                ? 'В сети'
+                : `Последний раз в сети: ${formatLastSeen(details?.peer?.lastSeen ?? null) || '—'}`}
             </p>
           )}
-          {details?.kind !== "direct" && details?.createdBy && (
-            <p className="muted">Создатель: {details.createdBy}</p>
+          {details?.kind !== 'direct' && details?.createdBy && (
+            <p className={styles.muted}>Создатель: {details.createdBy}</p>
           )}
         </div>
-        <span className={`pill ${statusClass}`} aria-live="polite">
-          <span className="status-pill">
-            {status === "connecting" && (
-              <span className="spinner" aria-hidden="true" />
-            )}
+        <span className={[styles.pill, statusClass].join(' ')} aria-live="polite">
+          <span className={styles.statusPill}>
+            {status === 'connecting' && <span className={styles.spinner} aria-hidden="true" />}
             {statusLabel}
           </span>
         </span>
       </div>
 
-      {visibleError && <div className="toast danger">{visibleError}</div>}
+      {visibleError && <Toast variant="danger">{visibleError}</Toast>}
       {loading ? (
-        <div className="panel muted" aria-busy="true">
+        <Panel muted busy>
           Загружаем историю...
-        </div>
+        </Panel>
       ) : (
-        <div className="chat-box">
+        <div className={styles.chatBox}>
           {rateLimitActive && (
-            <div className="rate-limit-banner" role="status" aria-live="polite">
-              Слишком много сообщений. Подождите{" "}
-              <span className="rate-limit-timer">{rateLimitSeconds} сек</span>
+            <div className={styles.rateLimitBanner} role="status" aria-live="polite">
+              Слишком много сообщений. Подождите{' '}
+              <span className={styles.rateLimitTimer}>{rateLimitSeconds} сек</span>
             </div>
           )}
-          <div
-            className="chat-log"
-            ref={listRef}
-            aria-live="polite"
-            onScroll={handleScroll}
-          >
+          <div className={styles.chatLog} ref={listRef} aria-live="polite" onScroll={handleScroll}>
             {loadingMore && (
-              <div className="panel muted" aria-busy="true">
+              <Panel muted busy>
                 Загружаем ранние сообщения...
-              </div>
+              </Panel>
             )}
             {!hasMore && (
-              <div className="panel muted" aria-live="polite">
-                Это начало истории.
-              </div>
+              <Panel muted>Это начало истории.</Panel>
             )}
             {timeline.map((item) =>
-              item.type === "day" ? (
+              item.type === 'day' ? (
                 <div
-                  className="day-separator"
+                  className={styles.daySeparator}
                   role="separator"
                   aria-label={item.label}
                   key={`day-${item.key}`}
@@ -539,37 +383,24 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
                   <span>{item.label}</span>
                 </div>
               ) : (
-                <article
-                  className="message"
-                  key={`${item.message.id}-${item.message.createdAt}`}
-                >
+                <article className={styles.message} key={`${item.message.id}-${item.message.createdAt}`}>
                   <button
                     type="button"
-                    className="avatar_link"
+                    className={styles.avatarLink}
                     aria-label={`Открыть профиль пользователя ${item.message.username}`}
                     onClick={() => openUserProfile(item.message.username)}
                   >
-                    <div
-                      className={`avatar small${onlineUsernames.has(item.message.username) ? " is-online" : ""}`}
-                    >
-                      {item.message.profilePic ? (
-                        <img
-                          src={item.message.profilePic}
-                          alt={item.message.username}
-                          loading="lazy"
-                          decoding="async"
-                        />
-                      ) : (
-                        <span>{avatarFallback(item.message.username)}</span>
-                      )}
-                    </div>
+                    <Avatar
+                      username={item.message.username}
+                      profileImage={item.message.profilePic}
+                      size="small"
+                      online={onlineUsernames.has(item.message.username)}
+                    />
                   </button>
-                  <div className="message-body">
-                    <div className="message-meta">
+                  <div className={styles.messageBody}>
+                    <div className={styles.messageMeta}>
                       <strong>{item.message.username}</strong>
-                      <span className="muted">
-                        {formatTimestamp(item.message.createdAt)}
-                      </span>
+                      <span className={styles.muted}>{formatTimestamp(item.message.createdAt)}</span>
                     </div>
                     <p>{item.message.content}</p>
                   </div>
@@ -578,52 +409,44 @@ export function ChatRoomPage({ slug, user, onNavigate }: Props) {
             )}
           </div>
           {!user && isPublicRoom && (
-            <div className="auth-callout">
-              <div className="auth-callout-text">
-                <p className="muted">
+            <div className={styles.authCallout} data-testid="chat-auth-callout">
+              <div className={styles.authCalloutText}>
+                <p className={styles.muted}>
                   Чтобы писать в публичном чате, войдите или зарегистрируйтесь.
                 </p>
               </div>
             </div>
           )}
           {user && (
-            <div className={`chat-input${rateLimitActive ? " blocked" : ""}`}>
+            <div className={[styles.chatInput, rateLimitActive ? styles.blocked : ''].filter(Boolean).join(' ')}>
               <input
                 type="text"
                 value={draft}
                 aria-label="Сообщение"
+                data-testid="chat-message-input"
                 placeholder="Сообщение"
                 disabled={rateLimitActive}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    /**
-                     * Выполняет метод `sendMessage`.
-                     * @returns Результат выполнения `sendMessage`.
-                     */
-
-                    sendMessage();
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    sendMessage()
                   }
                 }}
               />
-              <button
-                className="btn primary"
+              <Button
+                variant="primary"
                 aria-label="Отправить сообщение"
+                data-testid="chat-send-button"
                 onClick={sendMessage}
-                disabled={
-                  !draft.trim() ||
-                  status !== "online" ||
-                  !isOnline ||
-                  rateLimitActive
-                }
+                disabled={!draft.trim() || status !== 'online' || !isOnline || rateLimitActive}
               >
                 Отправить
-              </button>
+              </Button>
             </div>
           )}
         </div>
       )}
     </div>
-  );
+  )
 }
