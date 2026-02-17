@@ -89,3 +89,23 @@ class Profile(models.Model):
             return
 
         self._old_image_name = self.image.name
+
+
+class SecurityRateLimitBucket(models.Model):
+    """Хранит персистентные счетчики rate-limit для security-ограничений."""
+
+    scope_key = models.CharField(max_length=191, unique=True, db_index=True)
+    count = models.PositiveIntegerField(default=0)
+    reset_at = models.DateTimeField(db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Настраивает индексы для периодической очистки и быстрого поиска."""
+
+        indexes = [
+            models.Index(fields=["reset_at"], name="users_rl_reset_idx"),
+        ]
+
+    def __str__(self):
+        """Возвращает человекочитаемое представление bucket-записи."""
+        return f"{self.scope_key}:{self.count}"

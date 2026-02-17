@@ -9,6 +9,7 @@ from . import api
 urlpatterns = [
     path("csrf/", api.csrf_token, name="api-csrf-token"),
     path("session/", api.session_view, name="api-session"),
+    path("presence-session/", api.presence_session_view, name="api-presence-session"),
     path("login/", api.login_view, name="api-login"),
     path("logout/", api.logout_view, name="api-logout"),
     path("register/", api.register_view, name="api-register"),

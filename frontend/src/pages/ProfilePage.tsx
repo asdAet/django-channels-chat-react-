@@ -6,6 +6,7 @@ import {
 } from "../shared/lib/format";
 import { usePresence } from "../shared/presence";
 import type { UserProfile } from "../entities/user/types";
+import { USERNAME_MAX_LENGTH } from "../shared/config/limits";
 
 type SaveResult =
   | { ok: true }
@@ -30,7 +31,6 @@ type Props = {
  */
 
 export function ProfilePage({ user, onSave, onNavigate, onLogout }: Props) {
-  const USERNAME_MAX_LENGTH = 13;
   const { online: presenceOnline, status: presenceStatus } = usePresence();
   const [form, setForm] = useState({
     username: user?.username || "",

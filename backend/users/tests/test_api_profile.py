@@ -121,7 +121,7 @@ class ProfileApiTests(TestCase):
         response = self.client.post(
             '/api/auth/profile/',
             data={
-                'username': 'a' * 14,
+                'username': 'a' * 31,
                 'email': self.user.email,
             },
             HTTP_X_CSRFTOKEN=csrf,
@@ -130,6 +130,20 @@ class ProfileApiTests(TestCase):
         payload = response.json()
         self.assertIn('errors', payload)
         self.assertIn('username', payload['errors'])
+
+    def test_profile_update_accepts_username_length_30(self):
+        """?????????, ??? ??? ???????????? ?????? 30 ???????? ???????."""
+        self.client.force_login(self.user)
+        csrf = self._csrf()
+        response = self.client.post(
+            '/api/auth/profile/',
+            data={
+                'username': 'c' * 30,
+                'email': self.user.email,
+            },
+            HTTP_X_CSRFTOKEN=csrf,
+        )
+        self.assertEqual(response.status_code, 200)
 
     def test_profile_update_rejects_duplicate_email(self):
         """Проверяет сценарий `test_profile_update_rejects_duplicate_email`."""
@@ -224,7 +238,9 @@ class ProfileApiTests(TestCase):
 
         query = parse_qs(parsed.query)
         tampered = f"{parsed.path}?exp={query['exp'][0]}&sig=bad"
-        self.assertEqual(self.client.get(tampered).status_code, 403)
+        with self.assertLogs('security.audit', level='INFO') as captured:
+            self.assertEqual(self.client.get(tampered).status_code, 403)
+        self.assertTrue(any('media.signature.invalid' in line for line in captured.output))
 
         media_path = parsed.path.removeprefix("/api/auth/media/")
         expired_url = utils._signed_media_url_path(media_path, expires_at=1)

@@ -16,6 +16,8 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, OperationalError, ProgrammingError
 
 from chat_app_django.ip_utils import get_client_ip_from_scope
+from chat_app_django.security.audit import audit_ws_event
+from chat_app_django.security.rate_limit import DbRateLimiter, RateLimitPolicy
 
 from .access import READ_ROLES, can_read, can_write
 from .constants import (
@@ -56,21 +58,13 @@ def _is_valid_room_slug(value: str) -> bool:
 
 
 def _ws_connect_rate_limited(scope, endpoint: str) -> bool:
-    """Проверяет лимит подключений WebSocket для endpoint и IP-адреса."""
+    """????????? ????? ??????????? WebSocket ????? ????????????? DB-??????."""
     limit = int(getattr(settings, "WS_CONNECT_RATE_LIMIT", 60))
     window = int(getattr(settings, "WS_CONNECT_RATE_WINDOW", 60))
     ip = get_client_ip_from_scope(scope) or "unknown"
-    key = f"rl:ws:connect:{endpoint}:{ip}"
-    now = time.time()
-    data = cache.get(key)
-    if not data or data.get("reset", 0) <= now:
-        cache.set(key, {"count": 1, "reset": now + window}, timeout=window)
-        return False
-    if data.get("count", 0) >= limit:
-        return True
-    data["count"] = data.get("count", 0) + 1
-    cache.set(key, data, timeout=max(1, int(data["reset"] - now)))
-    return False
+    scope_key = f"rl:ws:connect:{endpoint}:{ip}"
+    policy = RateLimitPolicy(limit=limit, window_seconds=window)
+    return DbRateLimiter.is_limited(scope_key=scope_key, policy=policy)
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -84,19 +78,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
         room_slug = self.scope["url_route"]["kwargs"]["room_name"]
 
         if await sync_to_async(_ws_connect_rate_limited)(self.scope, "chat"):
+            audit_ws_event("ws.connect.denied", self.scope, endpoint="chat", reason="rate_limited", code=4429)
             await self.close(code=4429)
             return
 
         if room_slug != PUBLIC_ROOM_SLUG and not _is_valid_room_slug(room_slug):
+            audit_ws_event("ws.connect.denied", self.scope, endpoint="chat", reason="invalid_slug", code=4404, room_slug=room_slug)
             await self.close(code=4404)
             return
 
         room = await self._load_room(room_slug)
         if not room:
+            audit_ws_event("ws.connect.denied", self.scope, endpoint="chat", reason="room_not_found", code=4404, room_slug=room_slug)
             await self.close(code=4404)
             return
 
         if not await self._can_read(room, user):
+            audit_ws_event("ws.connect.denied", self.scope, endpoint="chat", reason="forbidden", code=4403, room_slug=room_slug)
             await self.close(code=4403)
             return
 
@@ -107,6 +105,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
         await self.accept()
+        audit_ws_event("ws.connect.accepted", self.scope, endpoint="chat", room_slug=self.room_name)
 
         self._last_activity = time.monotonic()
         self._idle_task = None
@@ -155,6 +154,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         if await self._rate_limited(user):
+            audit_ws_event("ws.message.rate_limited", self.scope, endpoint="chat", room_slug=self.room.slug)
             await self.send(text_data=json.dumps({"error": "rate_limited"}))
             return
 
@@ -274,20 +274,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @sync_to_async
     def _rate_limited(self, user) -> bool:
-        """Выполняет логику `_rate_limited` с параметрами из сигнатуры."""
+        """????????? message rate-limit ????? ????????????? DB-??????."""
         limit = int(getattr(settings, "CHAT_MESSAGE_RATE_LIMIT", 20))
         window = int(getattr(settings, "CHAT_MESSAGE_RATE_WINDOW", 10))
-        key = f"rl:chat:{user.id}"
-        now = time.time()
-        data = cache.get(key)
-        if not data or data.get("reset", 0) <= now:
-            cache.set(key, {"count": 1, "reset": now + window}, timeout=window)
-            return False
-        if data.get("count", 0) >= limit:
-            return True
-        data["count"] = data.get("count", 0) + 1
-        cache.set(key, data, timeout=max(1, int(data["reset"] - now)))
-        return False
+        scope_key = f"rl:chat:message:{user.id}"
+        policy = RateLimitPolicy(limit=limit, window_seconds=window)
+        return DbRateLimiter.is_limited(scope_key=scope_key, policy=policy)
 
     @sync_to_async
     def _build_direct_inbox_targets(self, room_id: int, sender_id: int, message: str, created_at: str):
@@ -387,10 +379,12 @@ class DirectInboxConsumer(AsyncWebsocketConsumer):
         """Выполняет логику `connect` с параметрами из сигнатуры."""
         user = self.scope.get("user")
         if not user or not user.is_authenticated:
+            audit_ws_event("ws.connect.denied", self.scope, endpoint="direct_inbox", reason="unauthorized", code=4401)
             await self.close(code=4401)
             return
 
         if await sync_to_async(_ws_connect_rate_limited)(self.scope, "direct_inbox"):
+            audit_ws_event("ws.connect.denied", self.scope, endpoint="direct_inbox", reason="rate_limited", code=4429)
             await self.close(code=4429)
             return
 
@@ -400,6 +394,7 @@ class DirectInboxConsumer(AsyncWebsocketConsumer):
 
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
+        audit_ws_event("ws.connect.accepted", self.scope, endpoint="direct_inbox")
 
         self._last_client_activity = time.monotonic()
         self._heartbeat_task = asyncio.create_task(self._heartbeat())
@@ -597,14 +592,21 @@ class PresenceConsumer(AsyncWebsocketConsumer):
         user = self.scope.get("user")
         self.is_guest = not user or not user.is_authenticated
         self.group_name = self.group_name_guest if self.is_guest else self.group_name_auth
-        self.guest_ip = self._get_client_ip() if self.is_guest else None
+        self.guest_key = self._get_guest_session_key() if self.is_guest else None
+
+        if self.is_guest and not self.guest_key:
+            audit_ws_event("ws.connect.denied", self.scope, endpoint="presence", reason="missing_guest_session", code=4401)
+            await self.close(code=4401)
+            return
 
         if await sync_to_async(_ws_connect_rate_limited)(self.scope, "presence"):
+            audit_ws_event("ws.connect.denied", self.scope, endpoint="presence", reason="rate_limited", code=4429)
             await self.close(code=4429)
             return
 
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
+        audit_ws_event("ws.connect.accepted", self.scope, endpoint="presence")
 
         self._last_client_activity = time.monotonic()
         self._next_presence_touch_at = 0.0
@@ -614,7 +616,7 @@ class PresenceConsumer(AsyncWebsocketConsumer):
             self._idle_task = asyncio.create_task(self._idle_watchdog())
 
         if self.is_guest:
-            await self._add_guest(self.guest_ip)
+            await self._add_guest(self.guest_key)
         else:
             await self._add_user(user)
         await self._broadcast()
@@ -634,7 +636,7 @@ class PresenceConsumer(AsyncWebsocketConsumer):
         user = self.scope.get("user")
         graceful = close_code in (1000, 1001)
         if self.is_guest:
-            await self._remove_guest(self.guest_ip, graceful=graceful)
+            await self._remove_guest(self.guest_key, graceful=graceful)
         elif user and user.is_authenticated:
             await self._remove_user(user, graceful=graceful)
 
@@ -660,7 +662,7 @@ class PresenceConsumer(AsyncWebsocketConsumer):
 
         user = self.scope.get("user")
         if self.is_guest:
-            await self._touch_guest(self.guest_ip)
+            await self._touch_guest(self.guest_key)
         elif user and user.is_authenticated:
             await self._touch_user(user)
 
@@ -889,6 +891,16 @@ class PresenceConsumer(AsyncWebsocketConsumer):
             return value.decode("utf-8")
         except UnicodeDecodeError:
             return value.decode("latin-1", errors="ignore")
+
+    def _get_guest_session_key(self) -> str | None:
+        """?????????? session_key ?????, ???? ?????? ????????????????."""
+        session = self.scope.get("session")
+        if not session:
+            return None
+        key = getattr(session, "session_key", None)
+        if not key:
+            return None
+        return str(key)
 
     def _get_client_ip(self) -> str | None:
         """Выполняет логику `_get_client_ip` с параметрами из сигнатуры."""

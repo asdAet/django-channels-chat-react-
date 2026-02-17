@@ -4,6 +4,7 @@
 import asyncio
 import json
 import time
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -12,6 +13,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.core.cache import cache
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from chat.constants import CHAT_CLOSE_IDLE_CODE, PRESENCE_CLOSE_IDLE_CODE
 from chat.consumers import (
@@ -22,6 +24,7 @@ from chat.consumers import (
     _ws_connect_rate_limited,
 )
 from chat.models import ChatRole, Room
+from users.models import SecurityRateLimitBucket
 
 User = get_user_model()
 
@@ -41,8 +44,13 @@ class WsConnectRateLimitTests(TestCase):
         self.assertFalse(_ws_connect_rate_limited(scope, "chat"))
         self.assertTrue(_ws_connect_rate_limited(scope, "chat"))
 
+        cache.clear()
+        self.assertTrue(_ws_connect_rate_limited(scope, "chat"))
+
         key = "rl:ws:connect:chat:127.0.0.1"
-        cache.set(key, {"count": 9, "reset": time.time() - 1}, timeout=60)
+        bucket = SecurityRateLimitBucket.objects.get(scope_key=key)
+        bucket.reset_at = timezone.now() - timedelta(seconds=1)
+        bucket.save(update_fields=["reset_at", "updated_at"])
         self.assertFalse(_ws_connect_rate_limited(scope, "chat"))
 
 
@@ -98,8 +106,13 @@ class ChatConsumerInternalTests(TestCase):
         self.assertFalse(async_to_sync(consumer._rate_limited)(self.user))
         self.assertTrue(async_to_sync(consumer._rate_limited)(self.user))
 
-        key = f'rl:chat:{self.user.id}'
-        cache.set(key, {'count': 9, 'reset': time.time() - 1}, timeout=60)
+        cache.clear()
+        self.assertTrue(async_to_sync(consumer._rate_limited)(self.user))
+
+        key = f'rl:chat:message:{self.user.id}'
+        bucket = SecurityRateLimitBucket.objects.get(scope_key=key)
+        bucket.reset_at = timezone.now() - timedelta(seconds=1)
+        bucket.save(update_fields=['reset_at', 'updated_at'])
         self.assertFalse(async_to_sync(consumer._rate_limited)(self.user))
 
     def test_chat_message_serializes_and_sends_payload(self):
@@ -213,6 +226,7 @@ class PresenceConsumerInternalTests(TestCase):
             'headers': [(b'host', b'localhost:8000')],
             'scheme': 'ws',
             'client': ('203.0.113.50', 56000),
+            'session': SimpleNamespace(session_key='session-presence-helper'),
         }
         consumer.channel_name = 'presence.channel'
         consumer.channel_layer = SimpleNamespace(
@@ -234,7 +248,7 @@ class PresenceConsumerInternalTests(TestCase):
         consumer.close = AsyncMock()
         consumer._last_client_activity = 0.0
         consumer._next_presence_touch_at = 0.0
-        consumer.guest_ip = '203.0.113.50'
+        consumer.guest_key = 'session-presence-helper'
         return consumer
 
     def test_decode_header_handles_utf8_and_latin1(self):
@@ -265,7 +279,7 @@ class PresenceConsumerInternalTests(TestCase):
 
         consumer._next_presence_touch_at = 0
         async_to_sync(consumer.receive)(json.dumps({'type': 'ping'}))
-        consumer._touch_guest.assert_awaited_once_with('203.0.113.50')
+        consumer._touch_guest.assert_awaited_once_with('session-presence-helper')
 
     def test_receive_touches_authenticated_user(self):
         """Проверяет сценарий `test_receive_touches_authenticated_user`."""
@@ -410,7 +424,7 @@ class PresenceConsumerInternalTests(TestCase):
 
         async_to_sync(guest_consumer.disconnect)(1001)
 
-        guest_consumer._remove_guest.assert_awaited_once_with('203.0.113.50', graceful=True)
+        guest_consumer._remove_guest.assert_awaited_once_with('session-presence-helper', graceful=True)
         guest_consumer._broadcast.assert_awaited_once()
         guest_consumer.channel_layer.group_discard.assert_awaited_once()
 
@@ -442,7 +456,7 @@ class PresenceConsumerInternalTests(TestCase):
         with patch('chat.consumers.asyncio.create_task', side_effect=_fake_task):
             async_to_sync(guest_consumer.connect)()
 
-        guest_consumer._add_guest.assert_awaited_once_with('203.0.113.50')
+        guest_consumer._add_guest.assert_awaited_once_with('session-presence-helper')
         guest_consumer._add_user.assert_not_awaited()
 
         auth_consumer = self._consumer()
@@ -462,11 +476,13 @@ class PresenceConsumerInternalTests(TestCase):
         consumer = self._consumer()
         consumer.accept = AsyncMock()
 
-        with patch("chat.consumers._ws_connect_rate_limited", return_value=True):
-            async_to_sync(consumer.connect)()
+        with self.assertLogs('security.audit', level='INFO') as captured:
+            with patch("chat.consumers._ws_connect_rate_limited", return_value=True):
+                async_to_sync(consumer.connect)()
 
         consumer.close.assert_awaited_once_with(code=4429)
         consumer.accept.assert_not_awaited()
+        self.assertTrue(any('ws.connect.denied' in line for line in captured.output))
 
 
 class ChatConsumerDirectInboxTargetsTests(TestCase):

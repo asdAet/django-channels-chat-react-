@@ -1,5 +1,6 @@
 ﻿import type { FormEvent } from 'react'
 import { useState } from 'react'
+import { USERNAME_MAX_LENGTH } from '../shared/config/limits'
 
 type Props = {
   title: string
@@ -26,7 +27,6 @@ export function AuthPage({
   error = null,
   passwordRules = [],
 }: Props) {
-  const USERNAME_MAX_LENGTH = 13
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')

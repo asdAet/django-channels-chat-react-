@@ -39,6 +39,7 @@ export interface IApiService {
    */
 
   ensureCsrf(): Promise<{ csrfToken: string }>
+  ensurePresenceSession(): Promise<{ ok: boolean }>
   /**
    * Выполняет метод `getSession`.
    * @returns Результат выполнения `getSession`.

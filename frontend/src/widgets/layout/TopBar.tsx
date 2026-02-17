@@ -60,10 +60,10 @@ export function TopBar({ user, onNavigate }: Props) {
           </button>
         ) : (
           <>
-            <button className="btn ghost" onClick={() => onNavigate('/login')}>
+            <button className="link" onClick={() => onNavigate('/login')}>
               Войти
             </button>
-            <button className="btn primary" onClick={() => onNavigate('/register')}>
+            <button className="link" onClick={() => onNavigate('/register')}>
               Регистрация
             </button>
           </>

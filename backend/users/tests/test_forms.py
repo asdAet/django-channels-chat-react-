@@ -31,6 +31,17 @@ class UserUpdateFormTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('username', form.errors)
 
+    def test_username_length_boundary(self):
+        """????????? ????????? ???????? ????? username ? ????? ??????????."""
+        user = User.objects.create_user(username='base_user', password='pass12345')
+
+        valid_form = UserUpdateForm(data={'username': 'x' * 30, 'email': ''}, instance=user)
+        self.assertTrue(valid_form.is_valid())
+
+        invalid_form = UserUpdateForm(data={'username': 'x' * 31, 'email': ''}, instance=user)
+        self.assertFalse(invalid_form.is_valid())
+        self.assertIn('username', invalid_form.errors)
+
     def test_rejects_duplicate_email_case_insensitive(self):
         """Проверяет сценарий `test_rejects_duplicate_email_case_insensitive`."""
         User.objects.create_user(username='user1', password='pass12345', email='mail@example.com')

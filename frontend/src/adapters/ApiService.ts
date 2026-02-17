@@ -8,6 +8,7 @@ import type {
 } from "../domain/interfaces/IApiService";
 
 import { ensureCsrf as ensureCsrfRequest } from "./apiService/ensureCsrf";
+import { ensurePresenceSession } from "./apiService/ensurePresenceSession";
 import { getSession } from "./apiService/getSession";
 import { login } from "./apiService/login";
 import { register } from "./apiService/register";
@@ -219,6 +220,10 @@ class ApiService implements IApiService {
 
     setCsrfToken(data.csrfToken || null);
     return data;
+  }
+
+  public async ensurePresenceSession(): Promise<{ ok: boolean }> {
+    return await ensurePresenceSession(this.apiClient);
   }
 
   /**

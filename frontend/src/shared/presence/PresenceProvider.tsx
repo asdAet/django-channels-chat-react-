@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 
+import { apiService } from '../../adapters/ApiService'
+import { useReconnectingWebSocket } from '../../hooks/useReconnectingWebSocket'
 import type { UserProfile } from '../../entities/user/types'
 import type { OnlineUser } from '../api/users'
 import { debugLog } from '../lib/debug'
 import { getWebSocketBase } from '../lib/ws'
-import { useReconnectingWebSocket } from '../../hooks/useReconnectingWebSocket'
 import { PresenceContext } from './context'
 
 const PRESENCE_PING_MS = 10000
@@ -16,110 +17,92 @@ type ProviderProps = {
   children: ReactNode
 }
 
-/**
- * Рендерит компонент `PresenceProvider` и связанную разметку.
- * @param props Входной параметр `props`.
- * @returns Результат выполнения `PresenceProvider`.
- */
-
 export function PresenceProvider({ user, children, ready = true }: ProviderProps) {
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([])
   const [guestCount, setGuestCount] = useState(0)
+  const [guestSessionReady, setGuestSessionReady] = useState<boolean>(Boolean(user))
+
+  useEffect(() => {
+    let active = true
+    if (!ready) {
+      setGuestSessionReady(false)
+      return () => {
+        active = false
+      }
+    }
+
+    if (user) {
+      setGuestSessionReady(true)
+      return () => {
+        active = false
+      }
+    }
+
+    setGuestSessionReady(false)
+    apiService
+      .ensurePresenceSession()
+      .then(() => {
+        if (!active) return
+        setGuestSessionReady(true)
+      })
+      .catch((err) => {
+        debugLog('Presence guest bootstrap failed', err)
+        if (!active) return
+        setGuestSessionReady(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [ready, user])
+
   const presenceUrl = useMemo(() => {
     if (!ready) return null
+    if (!user && !guestSessionReady) return null
     const base = `${getWebSocketBase()}/ws/presence/`
     return `${base}?auth=${user ? '1' : '0'}`
-  }, [user, ready])
+  }, [guestSessionReady, ready, user])
 
-  const handlePresence = useCallback((event: MessageEvent) => {
-    try {
-      const data = JSON.parse(event.data)
-      if (Array.isArray(data?.online)) {
-        const incoming = data.online
-        if (user) {
-          const nextImage = user.profileImage || null
-          /**
-           * Выполняет метод `setOnlineUsers`.
-           * @returns Результат выполнения `setOnlineUsers`.
-           */
-
-          setOnlineUsers(
-            incoming.map((entry: OnlineUser) =>
-              entry.username === user.username
-                ? { ...entry, profileImage: nextImage }
-                : entry,
-            ),
-          )
-        } else {
-          /**
-           * Выполняет метод `setOnlineUsers`.
-           * @param incoming Входной параметр `incoming`.
-           * @returns Результат выполнения `setOnlineUsers`.
-           */
-
-          setOnlineUsers(incoming)
+  const handlePresence = useCallback(
+    (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (Array.isArray(data?.online)) {
+          const incoming = data.online
+          if (user) {
+            const nextImage = user.profileImage || null
+            setOnlineUsers(
+              incoming.map((entry: OnlineUser) =>
+                entry.username === user.username ? { ...entry, profileImage: nextImage } : entry,
+              ),
+            )
+          } else {
+            setOnlineUsers(incoming)
+          }
         }
+
+        const rawGuests = data?.guests
+        const parsedGuests =
+          typeof rawGuests === 'number' ? rawGuests : Number.isFinite(Number(rawGuests)) ? Number(rawGuests) : null
+        if (parsedGuests !== null) {
+          setGuestCount(parsedGuests)
+        }
+      } catch (err) {
+        debugLog('Presence WS parse failed', err)
       }
-      const rawGuests = data?.guests
-      const parsedGuests =
-        typeof rawGuests === 'number' ? rawGuests : Number.isFinite(Number(rawGuests)) ? Number(rawGuests) : null
-      if (parsedGuests !== null) {
-        /**
-         * Выполняет метод `setGuestCount`.
-         * @param parsedGuests Входной параметр `parsedGuests`.
-         * @returns Результат выполнения `setGuestCount`.
-         */
-
-        setGuestCount(parsedGuests)
-      }
-    } catch (err) {
-      /**
-       * Выполняет метод `debugLog`.
-       * @param err Входной параметр `err`.
-       * @returns Результат выполнения `debugLog`.
-       */
-
-      debugLog('Presence WS parse failed', err)
-    }
-  }, [user])
-
-
-  /**
-   * Выполняет метод `useEffect`.
-   * @param props Входной параметр `props`.
-   * @returns Результат выполнения `useEffect`.
-   */
+    },
+    [user],
+  )
 
   useEffect(() => {
     if (!ready) {
-      /**
-       * Выполняет метод `setOnlineUsers`.
-       * @param props Входной параметр `props`.
-       * @returns Результат выполнения `setOnlineUsers`.
-       */
-
       setOnlineUsers([])
-      /**
-       * Выполняет метод `setGuestCount`.
-       * @returns Результат выполнения `setGuestCount`.
-       */
-
       setGuestCount(0)
     }
   }, [ready])
-  /**
-   * Выполняет метод `useEffect`.
-   * @param props Входной параметр `props`.
-   * @returns Результат выполнения `useEffect`.
-   */
 
   useEffect(() => {
     if (!user) return
-    /**
-     * Выполняет метод `setOnlineUsers`.
-     * @returns Результат выполнения `setOnlineUsers`.
-     */
-
     setOnlineUsers((prev) => {
       let changed = false
       const updated = prev.map((entry) => {
@@ -139,26 +122,11 @@ export function PresenceProvider({ user, children, ready = true }: ProviderProps
     onError: (err) => debugLog('Presence WS error', err),
   })
 
-  /**
-   * Выполняет метод `useEffect`.
-   * @param props Входной параметр `props`.
-   * @returns Результат выполнения `useEffect`.
-   */
-
   useEffect(() => {
     if (status !== 'online') return
     const sendPing = () => {
-      /**
-       * Выполняет метод `send`.
-       * @returns Результат выполнения `send`.
-       */
-
       send(JSON.stringify({ type: 'ping', ts: Date.now() }))
     }
-    /**
-     * Выполняет метод `sendPing`.
-     * @returns Результат выполнения `sendPing`.
-     */
 
     sendPing()
     const id = window.setInterval(sendPing, PRESENCE_PING_MS)

@@ -268,6 +268,9 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 
 AUTH_RATE_LIMIT = int(os.getenv("AUTH_RATE_LIMIT", "10"))
 AUTH_RATE_WINDOW = int(os.getenv("AUTH_RATE_WINDOW", "60"))
+USERNAME_MAX_LENGTH = env_int("USERNAME_MAX_LENGTH", 30, minimum=1)
+if USERNAME_MAX_LENGTH > 150:
+    raise ImproperlyConfigured("USERNAME_MAX_LENGTH must be <= 150.")
 CHAT_MESSAGE_MAX_LENGTH = int(os.getenv("CHAT_MESSAGE_MAX_LENGTH", "1000"))
 CHAT_MESSAGE_RATE_LIMIT = int(os.getenv("CHAT_MESSAGE_RATE_LIMIT", "20"))
 CHAT_MESSAGE_RATE_WINDOW = int(os.getenv("CHAT_MESSAGE_RATE_WINDOW", "10"))
@@ -348,6 +351,11 @@ LOGGING = {
         "users": {
             "handlers": ["console"],
             "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        "security.audit": {
+            "handlers": ["console"],
+            "level": "INFO",
             "propagate": False,
         },
     },

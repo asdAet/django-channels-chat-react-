@@ -5,6 +5,7 @@
 import warnings
 
 from django import forms
+from django.conf import settings
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 from django.utils.html import strip_tags
@@ -13,7 +14,7 @@ from PIL import Image
 from .models import MAX_PROFILE_IMAGE_PIXELS, MAX_PROFILE_IMAGE_SIDE, Profile
 
 
-USERNAME_MAX_LENGTH = 13
+USERNAME_MAX_LENGTH = max(1, min(int(getattr(settings, "USERNAME_MAX_LENGTH", 30)), 150))
 
 
 class UserRegisterForm(UserCreationForm):

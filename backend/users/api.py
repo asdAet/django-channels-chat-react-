@@ -1,37 +1,39 @@
+"""API ?????????????: auth/session/profile/media endpoints."""
 
-"""Содержит логику модуля `api` подсистемы `users`."""
-
+from __future__ import annotations
 
 import json
 import time
 from datetime import timedelta
 from urllib.parse import quote
 
+from django.conf import settings
 from django.contrib.auth import authenticate, login, logout, password_validation
 from django.contrib.auth.models import User
+from django.core.files.storage import default_storage
+from django.db import OperationalError, ProgrammingError
 from django.http import FileResponse, HttpResponse, JsonResponse
 from django.http.request import RawPostDataException
-from django.core.cache import cache
-from django.core.files.storage import default_storage
-from django.conf import settings
-from chat_app_django.ip_utils import get_client_ip_from_request
+from django.middleware.csrf import get_token
+from django.utils import timezone
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.http import require_http_methods
+
 from chat.utils import (
     build_profile_url_from_request,
     is_valid_media_signature,
     normalize_media_path,
 )
-from django.middleware.csrf import get_token
-from django.utils import timezone
-from django.views.decorators.csrf import ensure_csrf_cookie
-from django.views.decorators.http import require_http_methods
-from django.db import OperationalError, ProgrammingError
+from chat_app_django.ip_utils import get_client_ip_from_request
+from chat_app_django.security.audit import audit_http_event
+from chat_app_django.security.rate_limit import DbRateLimiter, RateLimitPolicy
 
 from .forms import ProfileUpdateForm, UserRegisterForm, UserUpdateForm
 from .models import Profile
 
 
 def _serialize_user(request, user):
-    """Выполняет логику `_serialize_user` с параметрами из сигнатуры."""
+    """??????????? ???????????? ??? ??????? API."""
     profile = getattr(user, "profile", None)
     profile_image = None
     if profile and getattr(profile, "image", None):
@@ -50,7 +52,7 @@ def _serialize_user(request, user):
 
 
 def _parse_body(request):
-    """Выполняет логику `_parse_body` с параметрами из сигнатуры."""
+    """????????? ????????? JSON/form payload ?? ???????."""
     content_type = request.META.get("CONTENT_TYPE", "")
     if content_type.startswith("multipart/form-data") or content_type.startswith("application/x-www-form-urlencoded"):
         return request.POST if request.POST else {}
@@ -72,7 +74,7 @@ def _parse_body(request):
 
 
 def _collect_errors(*errors):
-    """Выполняет логику `_collect_errors` с параметрами из сигнатуры."""
+    """?????????? ValidationError-??????? ? ?????? ??????."""
     combined = {}
     for error_dict in errors:
         for field, messages in error_dict.items():
@@ -81,86 +83,98 @@ def _collect_errors(*errors):
 
 
 def _get_client_ip(request) -> str:
-    """Выполняет логику `_get_client_ip` с параметрами из сигнатуры."""
+    """?????????? IP ??????? ? ?????? trusted proxy."""
     return get_client_ip_from_request(request) or ""
 
 
 def _rate_limited(request, action: str) -> bool:
-    """Выполняет логику `_rate_limited` с параметрами из сигнатуры."""
+    """????????? auth rate-limit ????? ????????????? DB-??????."""
     limit = int(getattr(settings, "AUTH_RATE_LIMIT", 10))
     window = int(getattr(settings, "AUTH_RATE_WINDOW", 60))
     ip = _get_client_ip(request) or "unknown"
-    key = f"rl:auth:{action}:{ip}"
-    now = time.time()
-    data = cache.get(key)
-    if not data or data.get("reset", 0) <= now:
-        cache.set(key, {"count": 1, "reset": now + window}, timeout=window)
-        return False
-    if data.get("count", 0) >= limit:
-        return True
-    data["count"] = data.get("count", 0) + 1
-    cache.set(key, data, timeout=max(1, int(data["reset"] - now)))
-    return False
+    scope_key = f"rl:auth:{action}:{ip}"
+    policy = RateLimitPolicy(limit=limit, window_seconds=window)
+    return DbRateLimiter.is_limited(scope_key=scope_key, policy=policy)
 
 
 @ensure_csrf_cookie
 @require_http_methods(["GET"])
 def csrf_token(request):
-    """Выполняет логику `csrf_token` с параметрами из сигнатуры."""
+    """?????? CSRF token ? ????????? CSRF cookie."""
     return JsonResponse({"csrfToken": get_token(request)})
 
 
 @ensure_csrf_cookie
 @require_http_methods(["GET"])
 def session_view(request):
-    """Выполняет логику `session_view` с параметрами из сигнатуры."""
+    """?????????? ??????? ?????? ????????????."""
     if request.user.is_authenticated:
-        return JsonResponse(
-            {"authenticated": True, "user": _serialize_user(request, request.user)}
-        )
+        return JsonResponse({"authenticated": True, "user": _serialize_user(request, request.user)})
     return JsonResponse({"authenticated": False, "user": None})
+
+
+@ensure_csrf_cookie
+@require_http_methods(["GET"])
+def presence_session_view(request):
+    """?????????????? ???????? ?????? ??? presence websocket."""
+    if not request.session.session_key:
+        request.session.create()
+    request.session.modified = True
+    audit_http_event("presence.session.bootstrap", request)
+    return JsonResponse({"ok": True})
 
 
 @require_http_methods(["POST"])
 def login_view(request):
-    """Выполняет логику `login_view` с параметрами из сигнатуры."""
+    """????????? ???? ????????????."""
     if _rate_limited(request, "login"):
+        audit_http_event("auth.login.rate_limited", request)
         return JsonResponse({"error": "Too many attempts"}, status=429)
+
     payload = _parse_body(request)
     if payload is None or payload == {}:
+        audit_http_event("auth.login.failed", request, reason="empty_body")
         return JsonResponse(
-            {"error": "Неверное тело запроса", "errors": {"body": ["Пустое тело запроса"]}},
+            {"error": "???????? ???? ???????", "errors": {"body": ["?????? ???? ???????"]}},
             status=400,
         )
 
     username = payload.get("username")
     password = payload.get("password")
     if not username or not password:
+        audit_http_event("auth.login.failed", request, reason="missing_credentials")
         return JsonResponse(
             {
-                "error": "Требуются логин и пароль",
-                "errors": {"credentials": ["Укажите логин и пароль"]},
+                "error": "????????? ????? ? ??????",
+                "errors": {"credentials": ["??????? ????? ? ??????"]},
             },
             status=400,
         )
 
     user = authenticate(request, username=username, password=password)
     if user is None:
+        audit_http_event(
+            "auth.login.failed",
+            request,
+            reason="invalid_credentials",
+            attempted_username=username,
+        )
         return JsonResponse(
             {
-                "error": "Неверный логин или пароль",
-                "errors": {"credentials": ["Неверный логин или пароль"]},
+                "error": "???????? ????? ??? ??????",
+                "errors": {"credentials": ["???????? ????? ??? ??????"]},
             },
             status=400,
         )
 
     login(request, user)
+    audit_http_event("auth.login.success", request, username=user.username)
     return JsonResponse({"authenticated": True, "user": _serialize_user(request, user)})
 
 
 @require_http_methods(["POST"])
 def logout_view(request):
-    """Выполняет логику `logout_view` с параметрами из сигнатуры."""
+    """????????? logout ???????? ????????????."""
     user = getattr(request, "user", None)
     if user and user.is_authenticated:
         try:
@@ -170,26 +184,30 @@ def logout_view(request):
                 profile.save(update_fields=["last_seen"])
         except (OperationalError, ProgrammingError):
             pass
+
     logout(request)
+    audit_http_event("auth.logout", request)
     return JsonResponse({"ok": True})
 
 
 @require_http_methods(["GET", "POST"])
 def register_view(request):
-    """Выполняет логику `register_view` с параметрами из сигнатуры."""
+    """???????????? ????????????."""
     if request.method == "GET":
         return JsonResponse(
-            {"detail": "Используйте POST c полями username, password1, password2"},
+            {"detail": "??????????? POST c ?????? username, password1, password2"},
             status=200,
         )
 
     if _rate_limited(request, "register"):
+        audit_http_event("auth.register.rate_limited", request)
         return JsonResponse({"error": "Too many attempts"}, status=429)
 
     payload = _parse_body(request)
     if not payload:
+        audit_http_event("auth.register.failed", request, reason="empty_body")
         return JsonResponse(
-            {"error": "Неверное тело запроса", "errors": {"body": ["Пустое тело запроса"]}},
+            {"error": "???????? ???? ???????", "errors": {"body": ["?????? ???? ???????"]}},
             status=400,
         )
 
@@ -198,41 +216,39 @@ def register_view(request):
     password2 = payload.get("password2")
 
     if not username:
+        audit_http_event("auth.register.failed", request, reason="missing_username")
         return JsonResponse(
-            {"error": "Требуется имя пользователя", "errors": {"username": ["Укажите имя пользователя"]}},
+            {"error": "????????? ??? ????????????", "errors": {"username": ["??????? ??? ????????????"]}},
             status=400,
         )
     if User.objects.filter(username=username).exists():
+        audit_http_event("auth.register.failed", request, reason="username_exists", attempted_username=username)
         return JsonResponse(
-            {"error": "Имя пользователя уже занято", "errors": {"username": ["Это имя уже используется"]}},
+            {"error": "??? ???????????? ??? ??????", "errors": {"username": ["??? ??? ??? ????????????"]}},
             status=400,
         )
     if not password1 or not password2:
+        audit_http_event("auth.register.failed", request, reason="missing_password")
         return JsonResponse(
-            {"error": "Требуется пароль", "errors": {"password": ["Укажите пароль"]}},
+            {"error": "????????? ??????", "errors": {"password": ["??????? ??????"]}},
             status=400,
         )
     if password1 != password2:
+        audit_http_event("auth.register.failed", request, reason="password_mismatch", attempted_username=username)
         return JsonResponse(
-            {"error": "Пароли не совпадают", "errors": {"password": ["Пароли не совпадают"]}},
+            {"error": "?????? ?? ?????????", "errors": {"password": ["?????? ?? ?????????"]}},
             status=400,
         )
 
-    form = UserRegisterForm(
-        {"username": username, "password1": password1, "password2": password2}
-    )
+    form = UserRegisterForm({"username": username, "password1": password1, "password2": password2})
     if form.is_valid():
         form.save()
-        user = authenticate(
-            request,
-            username=payload.get("username"),
-            password=payload.get("password1"),
-        )
+        user = authenticate(request, username=payload.get("username"), password=payload.get("password1"))
         if user:
             login(request, user)
-            return JsonResponse(
-                {"authenticated": True, "user": _serialize_user(request, user)}, status=201
-            )
+            audit_http_event("auth.register.success", request, username=user.username)
+            return JsonResponse({"authenticated": True, "user": _serialize_user(request, user)}, status=201)
+        audit_http_event("auth.register.success", request, username=username, authenticated=False)
         return JsonResponse({"ok": True}, status=201)
 
     errors = _collect_errors(form.errors)
@@ -240,24 +256,24 @@ def register_view(request):
     if errors and password_fields.intersection(errors.keys()):
         errors.pop("password1", None)
         errors.pop("password2", None)
-        errors["password"] = ["Пароль слишком слабый"]
-        return JsonResponse(
-            {"error": "Пароль слишком слабый", "errors": errors}, status=400
-        )
-    
-    summary = " ".join(["; ".join(v) for v in errors.values()]) if errors else "Ошибка валидации"
+        errors["password"] = ["?????? ??????? ??????"]
+        audit_http_event("auth.register.failed", request, reason="weak_password", attempted_username=username)
+        return JsonResponse({"error": "?????? ??????? ??????", "errors": errors}, status=400)
+
+    summary = " ".join(["; ".join(v) for v in errors.values()]) if errors else "?????? ?????????"
+    audit_http_event("auth.register.failed", request, reason="validation_error", attempted_username=username, errors=errors)
     return JsonResponse({"error": summary, "errors": errors}, status=400)
 
 
 @require_http_methods(["GET"])
 def password_rules(request):
-    """Выполняет логику `password_rules` с параметрами из сигнатуры."""
+    """?????????? ??????? ????????? ??????."""
     return JsonResponse({"rules": password_validation.password_validators_help_texts()})
 
 
 @require_http_methods(["GET"])
 def media_view(request, file_path: str):
-    """Выдает media-файл по подписанному URL через X-Accel-Redirect."""
+    """?????? media-???? ?? ???????????? URL ????? X-Accel-Redirect."""
     normalized_path = normalize_media_path(file_path)
     if not normalized_path:
         return JsonResponse({"error": "Not found"}, status=404)
@@ -267,13 +283,16 @@ def media_view(request, file_path: str):
     try:
         expires_at = int(exp_raw)  # type: ignore[arg-type]
     except (TypeError, ValueError):
+        audit_http_event("media.signature.invalid", request, path=file_path, reason="invalid_exp")
         return JsonResponse({"error": "Forbidden"}, status=403)
 
     now = int(time.time())
     if expires_at < now:
+        audit_http_event("media.signature.expired", request, path=normalized_path)
         return JsonResponse({"error": "Forbidden"}, status=403)
 
     if not is_valid_media_signature(normalized_path, expires_at, signature):
+        audit_http_event("media.signature.invalid", request, path=normalized_path, reason="bad_signature")
         return JsonResponse({"error": "Forbidden"}, status=403)
 
     if not default_storage.exists(normalized_path):
@@ -292,15 +311,11 @@ def media_view(request, file_path: str):
 
 @require_http_methods(["GET"])
 def public_profile_view(request, username: str):
-    """Выполняет логику `public_profile_view` с параметрами из сигнатуры."""
+    """?????????? ????????? ??????? ????????????."""
     if not username:
         return JsonResponse({"error": "Not found"}, status=404)
 
-    user = (
-        User.objects.filter(username=username)
-        .select_related("profile")
-        .first()
-    )
+    user = User.objects.filter(username=username).select_related("profile").first()
     if not user:
         return JsonResponse({"error": "Not found"}, status=404)
 
@@ -324,27 +339,26 @@ def public_profile_view(request, username: str):
         }
     )
 
-@require_http_methods(["GET", "POST"])
 
+@require_http_methods(["GET", "POST"])
 def profile_view(request):
-    """Выполняет логику `profile_view` с параметрами из сигнатуры."""
+    """??????/?????????? ??????? ???????? ????????????."""
     if not request.user.is_authenticated:
-        return JsonResponse({"error": "Требуется авторизация"}, status=401)
+        return JsonResponse({"error": "????????? ???????????"}, status=401)
 
     if request.method == "GET":
         return JsonResponse({"user": _serialize_user(request, request.user)})
 
     payload = _parse_body(request)
     u_form = UserUpdateForm(payload, instance=request.user)
-    p_form = ProfileUpdateForm(
-        payload, request.FILES, instance=request.user.profile
-    )
+    p_form = ProfileUpdateForm(payload, request.FILES, instance=request.user.profile)
 
     if u_form.is_valid() and p_form.is_valid():
         u_form.save()
         p_form.save()
+        audit_http_event("auth.profile.update.success", request, username=request.user.username)
         return JsonResponse({"user": _serialize_user(request, request.user)})
 
-    return JsonResponse({"errors": _collect_errors(u_form.errors, p_form.errors)}, status=400)
-
-
+    errors = _collect_errors(u_form.errors, p_form.errors)
+    audit_http_event("auth.profile.update.failed", request, username=request.user.username, errors=errors)
+    return JsonResponse({"errors": errors}, status=400)
